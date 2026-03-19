@@ -1,0 +1,51 @@
+{
+  "name": "codex-agent",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "dist-desktop/desktop/main.js",
+  "scripts": {
+    "login": "tsx src/index.ts login",
+    "chat": "tsx src/index.ts chat",
+    "daemon:start": "tsx desktop/daemon/cli.ts --port 43125 --token local-dev-token",
+    "desktop:build": "tsc -p tsconfig.desktop.json",
+    "ui:build": "vite build",
+    "desktop:start": "npm run desktop:build && npm run ui:build && node scripts/electron-launcher.cjs .",
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@mariozechner/pi-ai": "^0.60.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "i18next": "^25.8.19",
+    "lucide-react": "^0.577.0",
+    "pdfjs-dist": "^5.5.207",
+    "playwright-core": "^1.58.2",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-i18next": "^16.5.8",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/electron": "^1.4.38",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "autoprefixer": "^10.4.27",
+    "electron": "^41.0.3",
+    "jsdom": "^29.0.0",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.1",
+    "vitest": "^4.1.0"
+  }
+}

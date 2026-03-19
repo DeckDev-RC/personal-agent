@@ -1,0 +1,9 @@
+node_modules/
+dist-desktop/
+ui-dist/
+data/
+temp-electron-app/
+coverage/
+*.log
+.DS_Store
+Thumbs.db

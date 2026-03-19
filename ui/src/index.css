@@ -1,0 +1,333 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-primary: #0a0a0a;
+  --color-bg-secondary: #111111;
+  --color-bg-tertiary: #1a1a1a;
+  --color-border: #222222;
+  --color-text-primary: #e0e0e0;
+  --color-text-secondary: #888888;
+  --color-accent-green: #4ade80;
+  --color-accent-blue: #60a5fa;
+  --color-accent-orange: #fb923c;
+}
+
+/* ---------------------------------------------------------------------------
+   Design Token System (Dark by default)
+   --------------------------------------------------------------------------- */
+
+:root {
+  /* Backgrounds */
+  --bg: #0a0a0a;
+  --bg-accent: #111111;
+  --bg-elevated: #1a1a1a;
+  --bg-hover: #1e1e1e;
+  --bg-muted: #141414;
+
+  /* Card / Surface */
+  --card: #131313;
+  --card-foreground: #e0e0e0;
+  --popover: #161616;
+  --popover-foreground: #e0e0e0;
+
+  /* Panel */
+  --panel: #111111;
+  --panel-strong: #1a1a1a;
+  --panel-hover: #1e1e1e;
+
+  /* Text */
+  --text: #e0e0e0;
+  --text-strong: #f5f5f5;
+  --muted: #888888;
+  --muted-foreground: #6b6b6b;
+
+  /* Border */
+  --border-subtle: #222222;
+  --border-strong: #333333;
+  --border-hover: #444444;
+
+  /* Semantic – success */
+  --ok: #4ade80;
+  --ok-subtle: rgba(74, 222, 128, 0.12);
+
+  /* Semantic – warning */
+  --warn: #fb923c;
+  --warn-subtle: rgba(251, 146, 60, 0.12);
+
+  /* Semantic – danger */
+  --danger: #f87171;
+  --danger-subtle: rgba(248, 113, 113, 0.12);
+
+  /* Semantic – info */
+  --info: #60a5fa;
+
+  /* Focus */
+  --focus-ring: rgba(96, 165, 250, 0.5);
+  --focus-glow: 0 0 0 3px rgba(96, 165, 250, 0.25);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 8px 10px -6px rgba(0, 0, 0, 0.6);
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+  --duration-slow: 350ms;
+
+  /* Typography */
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", monospace;
+}
+
+/* ---------------------------------------------------------------------------
+   Light Theme Overrides
+   --------------------------------------------------------------------------- */
+
+[data-theme="light"] {
+  /* Backgrounds */
+  --bg: #ffffff;
+  --bg-accent: #f7f7f8;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f0f0f1;
+  --bg-muted: #f4f4f5;
+
+  /* Card / Surface */
+  --card: #ffffff;
+  --card-foreground: #18181b;
+  --popover: #ffffff;
+  --popover-foreground: #18181b;
+
+  /* Panel */
+  --panel: #f7f7f8;
+  --panel-strong: #ececee;
+  --panel-hover: #e4e4e7;
+
+  /* Text */
+  --text: #18181b;
+  --text-strong: #09090b;
+  --muted: #71717a;
+  --muted-foreground: #a1a1aa;
+
+  /* Border */
+  --border-subtle: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --border-hover: #a1a1aa;
+
+  /* Semantic – success */
+  --ok: #16a34a;
+  --ok-subtle: rgba(22, 163, 74, 0.1);
+
+  /* Semantic – warning */
+  --warn: #ea580c;
+  --warn-subtle: rgba(234, 88, 12, 0.1);
+
+  /* Semantic – danger */
+  --danger: #dc2626;
+  --danger-subtle: rgba(220, 38, 38, 0.1);
+
+  /* Semantic – info */
+  --info: #2563eb;
+
+  /* Focus */
+  --focus-ring: rgba(37, 99, 235, 0.5);
+  --focus-glow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.06);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+}
+
+/* ---------------------------------------------------------------------------
+   Keyframe Animations
+   --------------------------------------------------------------------------- */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Reduced Motion
+   --------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Scrollbar
+   --------------------------------------------------------------------------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+}
+
+/* ---------------------------------------------------------------------------
+   Base Styles
+   --------------------------------------------------------------------------- */
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------------
+   Focus Visible
+   --------------------------------------------------------------------------- */
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  box-shadow: var(--focus-glow);
+}
+
+/* ---------------------------------------------------------------------------
+   App Drag Region (Electron / Tauri)
+   --------------------------------------------------------------------------- */
+
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
+.app-drag-region button,
+.app-drag-region input,
+.app-drag-region a,
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* ---------------------------------------------------------------------------
+   Keyboard & Selection
+   --------------------------------------------------------------------------- */
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+::selection {
+  background: var(--focus-ring);
+}
+
+/* ---------------------------------------------------------------------------
+   Skeleton Loading
+   --------------------------------------------------------------------------- */
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-muted);
+  border-radius: var(--radius-md);
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 40%,
+    rgba(255, 255, 255, 0.06) 50%,
+    rgba(255, 255, 255, 0.04) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
+[data-theme="light"] .skeleton::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 0, 0, 0.04) 40%,
+    rgba(0, 0, 0, 0.06) 50%,
+    rgba(0, 0, 0, 0.04) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+}
+
+.skeleton-text {
+  height: 0.75em;
+  width: 100%;
+}
+
+.skeleton-circle {
+  border-radius: var(--radius-full);
+}
