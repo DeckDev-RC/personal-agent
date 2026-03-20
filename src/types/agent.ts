@@ -36,3 +36,19 @@ export type AgentConfig = {
   createdAt: number;
   updatedAt: number;
 };
+
+export type AgentSuggestionCategory =
+  | "pm"
+  | "communication"
+  | "research"
+  | "technical"
+  | "generic";
+
+export type AgentSuggestion = {
+  agentId: string;
+  agentName: string;
+  score: number;
+  confidence: "low" | "medium" | "high";
+  category: AgentSuggestionCategory;
+  matchedKeywords: string[];
+};

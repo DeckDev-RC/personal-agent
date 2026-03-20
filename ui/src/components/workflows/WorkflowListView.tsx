@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Plus, Play, Square, Pencil, Trash2, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { describeWorkflowSchedule, getNextWorkflowScheduleRunAt } from "../../../../src/workflowSchedule.js";
 import { useWorkflowStore, type Workflow } from "../../stores/workflowStore";
 import Button from "../shared/Button";
 import Badge from "../shared/Badge";
@@ -75,6 +76,10 @@ export default function WorkflowListView() {
           <div className="grid gap-3">
             {workflows.map((workflow) => {
               const isRunning = runState?.workflowId === workflow.id && runState.running;
+              const scheduleLabel = workflow.schedule?.enabled ? describeWorkflowSchedule(workflow.schedule) : null;
+              const nextRunAt = workflow.schedule?.enabled
+                ? workflow.schedule.nextRunAt ?? getNextWorkflowScheduleRunAt(workflow.schedule)
+                : undefined;
               return (
                 <div key={workflow.id} className="rounded-xl border border-border bg-bg-secondary p-4">
                   <div className="flex items-start justify-between gap-4">
@@ -88,6 +93,12 @@ export default function WorkflowListView() {
                       </div>
                       {workflow.description && (
                         <p className="mt-1 text-xs text-text-secondary">{workflow.description}</p>
+                      )}
+                      {scheduleLabel && (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[10px] text-text-secondary/65">
+                          <Badge color="blue">{scheduleLabel}</Badge>
+                          {nextRunAt && <span>Next run: {new Date(nextRunAt).toLocaleString()}</span>}
+                        </div>
                       )}
                       {Object.keys(workflow.variables).length > 0 && (
                         <p className="mt-1.5 text-[10px] text-text-secondary/50 font-mono truncate">

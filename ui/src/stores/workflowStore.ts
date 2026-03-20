@@ -1,45 +1,7 @@
 import { create } from "zustand";
+import type { Workflow, WorkflowStep } from "../../../src/types/workflow.js";
 
-export type WorkflowStep = {
-  id: string;
-  type:
-    | "agent-chat"
-    | "skill-execute"
-    | "conditional"
-    | "delay"
-    | "tool-call"
-    | "memory-query"
-    | "reindex-workspace";
-  agentId?: string;
-  skillId?: string;
-  prompt?: string;
-  condition?: string;
-  delayMs?: number;
-  toolName?: string;
-  toolArgs?: Record<string, string>;
-  memoryQuery?: string;
-  memoryLimit?: number;
-  onSuccess?: string;
-  onFailure?: string;
-};
-
-export type Workflow = {
-  id: string;
-  name: string;
-  description: string;
-  steps: WorkflowStep[];
-  variables: Record<string, string>;
-  schedule?: {
-    enabled: boolean;
-    intervalMinutes: number;
-    nextRunAt?: number;
-    lastRunAt?: number;
-    retryOnFailure?: boolean;
-    maxRetries?: number;
-  };
-  createdAt: number;
-  updatedAt: number;
-};
+export type { Workflow, WorkflowStep };
 
 export type WorkflowStepRunState = {
   stepId: string;

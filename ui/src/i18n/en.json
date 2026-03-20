@@ -7,6 +7,7 @@
     "chat": "Chat",
     "notifications": "Notifications",
     "workspace": "Workspace",
+    "documents": "Documents",
     "agents": "Agents",
     "contexts": "Contexts",
     "tasks": "Tasks",
@@ -46,6 +47,20 @@
     "yesterday": "Yesterday",
     "scrollToBottom": "Scroll to bottom",
     "voiceInput": "Voice input",
+    "agentSuggestion": {
+      "label": "Suggested agent",
+      "use": "Use agent",
+      "dismiss": "Dismiss",
+      "reason": "Best fit for {{category}}.",
+      "reasonWithKeywords": "Best fit for {{category}}. Signals: {{keywords}}.",
+      "categories": {
+        "pm": "planning and status work",
+        "communication": "communication and writing",
+        "research": "research and analysis",
+        "technical": "technical work",
+        "generic": "this request"
+      }
+    },
     "console": {
       "sessionsTitle": "Sessions",
       "sessionsSubtitle": "Agent workspaces and transcripts",
@@ -255,6 +270,14 @@
       "tasks": "Tasks"
     }
   },
+  "documents": {
+    "title": "Documents",
+    "subtitle": "Generate reusable work documents from templates and export them to your local cowork workspace.",
+    "refresh": "Refresh templates",
+    "galleryTitle": "Template gallery",
+    "emptyTitle": "No templates available",
+    "emptyDescription": "Add markdown templates under data/templates to populate this view."
+  },
   "dashboard": {
     "title": "Today",
     "subtitle": "A fast dashboard for context, manual agenda, recent activity, and shortcuts to start the workday.",
@@ -456,6 +479,7 @@
     "openToday": "Open Today",
     "newChat": "New conversation",
     "openWorkspace": "Open workspace",
+    "openDocuments": "Open documents",
     "createAgent": "Create agent",
     "createSkill": "Create skill",
     "createWorkflow": "Create workflow",

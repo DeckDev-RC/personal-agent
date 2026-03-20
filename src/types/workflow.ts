@@ -23,7 +23,9 @@ export type WorkflowStep = {
 
 export type WorkflowSchedule = {
   enabled: boolean;
-  intervalMinutes: number;
+  mode: "interval" | "cron";
+  intervalMinutes?: number;
+  cronExpression?: string;
   nextRunAt?: number;
   lastRunAt?: number;
   retryOnFailure?: boolean;

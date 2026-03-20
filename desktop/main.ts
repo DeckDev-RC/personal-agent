@@ -8,10 +8,17 @@ import {
   loginAndStoreOpenAICodexOAuth,
   type OpenAICodexOAuthUIHandlers,
 } from "../src/auth/openaiCodexOAuth.js";
+import type { SavedDocumentExport } from "../src/types/document.js";
 import type { Skill } from "../src/types/skill.js";
 import type { DaemonEnvelope } from "../src/types/daemon.js";
 import { startDaemonProcess, type DaemonProcessHandle } from "./daemon/process.js";
 import { resolveDataRoot } from "./services/dataRoot.js";
+import {
+  listDocumentTemplates,
+  renderDocumentTemplate,
+  saveRenderedDocument,
+  saveRenderedPdf,
+} from "./services/templateEngine.js";
 import { notifyReminderTriggered, setNotificationWindow } from "./services/notificationManager.js";
 import {
   deleteProviderAuth,
@@ -400,6 +407,52 @@ async function handleExportSkills(skillIds?: string[]) {
   return { ok: true, exported: skills.length, filePath: result.filePath };
 }
 
+async function buildDocumentPdf(rendered: { html: string }): Promise<Uint8Array> {
+  const pdfWindow = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      sandbox: false,
+    },
+  });
+
+  try {
+    await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(rendered.html)}`);
+    const buffer = await pdfWindow.webContents.printToPDF({
+      printBackground: true,
+      landscape: false,
+      margins: {
+        marginType: "default",
+      },
+    });
+    return new Uint8Array(buffer);
+  } finally {
+    pdfWindow.destroy();
+  }
+}
+
+async function handleExportDocument(args: {
+  templateId: string;
+  values?: Record<string, string>;
+  format: "markdown" | "html" | "pdf";
+}): Promise<SavedDocumentExport> {
+  const rendered = await renderDocumentTemplate({
+    templateId: args.templateId,
+    values: args.values,
+  });
+
+  if (args.format === "pdf") {
+    return await saveRenderedPdf({
+      rendered,
+      pdfBytes: await buildDocumentPdf(rendered),
+    });
+  }
+
+  return await saveRenderedDocument({
+    rendered,
+    format: args.format,
+  });
+}
+
 // --- Register IPC ---
 
 function registerIpcHandlers() {
@@ -494,6 +547,9 @@ function registerIpcHandlers() {
   ipcMain.handle("store:agents:get", (_e, id: string) => daemonClient().get(`/entities/agents/${id}`));
   ipcMain.handle("store:agents:save", (_e, agent: any) => daemonClient().post("/entities/agents", agent));
   ipcMain.handle("store:agents:delete", (_e, id: string) => daemonClient().delete(`/entities/agents/${id}`));
+  ipcMain.handle("agents:suggest", (_e, args: { prompt: string; currentAgentId?: string }) =>
+    daemonClient().post("/agents/suggest", args),
+  );
 
   // Store: Skills
   ipcMain.handle("store:skills:list", () => daemonClient().get("/entities/skills"));
@@ -608,6 +664,15 @@ function registerIpcHandlers() {
   ipcMain.handle("cowork:file", (_e, relativePath: string) =>
     daemonClient().get(`/cowork/file?path=${encodeURIComponent(relativePath)}`),
   );
+  ipcMain.handle("documents:listTemplates", () => listDocumentTemplates());
+  ipcMain.handle("documents:render", (_e, args: { templateId: string; values?: Record<string, string> }) =>
+    renderDocumentTemplate(args),
+  );
+  ipcMain.handle("documents:export", (_e, args: {
+    templateId: string;
+    values?: Record<string, string>;
+    format: "markdown" | "html" | "pdf";
+  }) => handleExportDocument(args));
   ipcMain.handle("browser:status", (_e, sessionId: string) => daemonClient().get(`/browser/status/${sessionId}`));
   ipcMain.handle("browser:invoke", (_e, args: Record<string, unknown>) => daemonClient().post("/browser/invoke", args));
   ipcMain.handle("browser:reset", (_e, sessionId: string) => daemonClient().post("/browser/reset", { sessionId }));

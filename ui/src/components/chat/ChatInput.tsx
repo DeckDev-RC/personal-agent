@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUp, Paperclip, Square, X, Plus, Trash2, Download, Search, Cpu, Mic, MicOff } from "lucide-react";
+import { ArrowUp, Bot, Paperclip, Square, X, Plus, Trash2, Download, Search, Cpu, Mic, MicOff } from "lucide-react";
 import { isSpeechSupported, startRecognition, stopRecognition } from "../../utils/speech";
 
 export type PendingAttachment = {
@@ -8,6 +8,14 @@ export type PendingAttachment = {
   mimeType: string;
   bytesBase64: string;
   byteSize: number;
+};
+
+export type ChatAgentSuggestion = {
+  agentId: string;
+  agentName: string;
+  confidence: "low" | "medium" | "high";
+  category: "pm" | "communication" | "research" | "technical" | "generic";
+  matchedKeywords: string[];
 };
 
 type SlashCommand = {
@@ -23,11 +31,25 @@ type ChatInputProps = {
   disabled: boolean;
   streaming: boolean;
   onSlashCommand?: (command: string) => void;
+  onDraftChange?: (value: string) => void;
+  agentSuggestion?: ChatAgentSuggestion | null;
+  onApplyAgentSuggestion?: (agentId: string) => void;
+  onDismissAgentSuggestion?: () => void;
 };
 
 const MAX_HISTORY = 50;
 
-export default function ChatInput({ onSend, onAbort, disabled, streaming, onSlashCommand }: ChatInputProps) {
+export default function ChatInput({
+  onSend,
+  onAbort,
+  disabled,
+  streaming,
+  onSlashCommand,
+  onDraftChange,
+  agentSuggestion,
+  onApplyAgentSuggestion,
+  onDismissAgentSuggestion,
+}: ChatInputProps) {
   const { t, i18n } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -106,6 +128,10 @@ export default function ChatInput({ onSend, onAbort, disabled, streaming, onSlas
       textareaRef.current?.focus();
     }
   }, [disabled, streaming]);
+
+  useEffect(() => {
+    onDraftChange?.(value);
+  }, [onDraftChange, value]);
 
   const executeSlashCommand = useCallback(
     (command: string) => {
@@ -259,9 +285,67 @@ export default function ChatInput({ onSend, onAbort, disabled, streaming, onSlas
     setAttachments((current) => [...current, ...nextAttachments]);
   }
 
+  const suggestionReason = useMemo(() => {
+    if (!agentSuggestion) {
+      return "";
+    }
+
+    const categoryLabel = t(`chat.agentSuggestion.categories.${agentSuggestion.category}`);
+    const keywords = agentSuggestion.matchedKeywords.slice(0, 3).join(", ");
+
+    if (keywords) {
+      return t("chat.agentSuggestion.reasonWithKeywords", {
+        category: categoryLabel,
+        keywords,
+      });
+    }
+
+    return t("chat.agentSuggestion.reason", {
+      category: categoryLabel,
+    });
+  }, [agentSuggestion, t]);
+
   return (
     <div className="border-t border-border bg-bg-primary/90 px-5 py-2.5 backdrop-blur">
       <div className="relative w-full">
+        {agentSuggestion && !streaming && (
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-bg-secondary/75 px-3 py-2">
+            <div className="flex min-w-0 items-start gap-2">
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-accent-green/12 text-accent-green">
+                <Bot size={13} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] uppercase tracking-[0.12em] text-text-secondary/60">
+                  {t("chat.agentSuggestion.label")}
+                </div>
+                <div className="truncate text-xs font-medium text-text-primary">
+                  {agentSuggestion.agentName}
+                </div>
+                <div className="text-[11px] text-text-secondary/70">
+                  {suggestionReason}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onDismissAgentSuggestion?.()}
+                className="rounded-lg px-2 py-1 text-[11px] text-text-secondary hover:bg-white/5 hover:text-text-primary transition-colors cursor-pointer"
+              >
+                {t("chat.agentSuggestion.dismiss")}
+              </button>
+              <button
+                type="button"
+                onClick={() => onApplyAgentSuggestion?.(agentSuggestion.agentId)}
+                className="rounded-lg bg-accent-green px-2.5 py-1 text-[11px] font-medium text-black hover:bg-[#6df29a] transition-colors cursor-pointer"
+              >
+                {t("chat.agentSuggestion.use")}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Slash command dropdown */}
         {showSlashMenu && filteredCommands.length > 0 && (
           <div

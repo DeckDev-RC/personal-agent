@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   FolderTree,
+  FileStack,
   Bot,
   Zap,
   GitBranch,
@@ -79,6 +80,12 @@ export default function CommandPalette({
         label: t("commandPalette.openWorkspace"),
         icon: FolderTree,
         action: () => { onNavigate("workspace"); onClose(); },
+      },
+      {
+        id: "documents",
+        label: t("commandPalette.openDocuments"),
+        icon: FileStack,
+        action: () => { onNavigate("documents"); onClose(); },
       },
       {
         id: "agents",

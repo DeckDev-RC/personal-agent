@@ -1,10 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Plus, Save } from "lucide-react";
+import {
+  describeWorkflowSchedule,
+  getNextWorkflowScheduleRunAt,
+  normalizeWorkflowSchedule,
+  validateWorkflowSchedule,
+} from "../../../../src/workflowSchedule.js";
 import { useAgentStore } from "../../stores/agentStore";
 import { useSkillStore } from "../../stores/skillStore";
 import { useWorkflowStore, type Workflow, type WorkflowStep } from "../../stores/workflowStore";
 import Button from "../shared/Button";
 import Input, { TextArea } from "../shared/Input";
+import Select from "../shared/Select";
 import WorkflowStepEditor from "./WorkflowStepEditor";
 
 type WorkflowEditorProps = {
@@ -47,12 +54,15 @@ export default function WorkflowEditor({ workflow, onClose }: WorkflowEditorProp
   const { loaded: agentsLoaded, loadAgents } = useAgentStore();
   const { loaded: skillsLoaded, loadSkills } = useSkillStore();
   const isNew = !workflow;
+  const initialSchedule = normalizeWorkflowSchedule(workflow?.schedule);
 
   const [name, setName] = useState(workflow?.name ?? "");
   const [description, setDescription] = useState(workflow?.description ?? "");
   const [variablesText, setVariablesText] = useState(formatVariables(workflow?.variables ?? {}));
-  const [scheduleEnabled, setScheduleEnabled] = useState(Boolean(workflow?.schedule?.enabled));
-  const [intervalMinutes, setIntervalMinutes] = useState(String(workflow?.schedule?.intervalMinutes ?? 60));
+  const [scheduleEnabled, setScheduleEnabled] = useState(Boolean(initialSchedule?.enabled));
+  const [scheduleMode, setScheduleMode] = useState<"interval" | "cron">(initialSchedule?.mode ?? "interval");
+  const [intervalMinutes, setIntervalMinutes] = useState(String(initialSchedule?.intervalMinutes ?? 60));
+  const [cronExpression, setCronExpression] = useState(initialSchedule?.cronExpression ?? "0 8 * * 1-5");
   const [steps, setSteps] = useState<WorkflowStep[]>(
     workflow?.steps.length ? workflow.steps : [createStep()],
   );
@@ -65,6 +75,28 @@ export default function WorkflowEditor({ workflow, onClose }: WorkflowEditorProp
   }, [agentsLoaded, loadAgents, skillsLoaded, loadSkills]);
 
   const stepIds = useMemo(() => steps.map((step) => step.id), [steps]);
+  const draftSchedule = useMemo(
+    () =>
+      scheduleEnabled
+        ? normalizeWorkflowSchedule({
+            enabled: true,
+            mode: scheduleMode,
+            intervalMinutes: Number(intervalMinutes) || 60,
+            cronExpression,
+            retryOnFailure: workflow?.schedule?.retryOnFailure ?? false,
+            maxRetries: workflow?.schedule?.maxRetries,
+          })
+        : undefined,
+    [cronExpression, intervalMinutes, scheduleEnabled, scheduleMode, workflow?.schedule?.maxRetries, workflow?.schedule?.retryOnFailure],
+  );
+  const scheduleValidation = useMemo(
+    () => validateWorkflowSchedule(draftSchedule),
+    [draftSchedule],
+  );
+  const nextRunPreview = useMemo(
+    () => getNextWorkflowScheduleRunAt(draftSchedule),
+    [draftSchedule],
+  );
 
   function updateStep(index: number, nextStep: WorkflowStep) {
     setSteps((current) => current.map((step, currentIndex) => (currentIndex === index ? nextStep : step)));
@@ -99,6 +131,7 @@ export default function WorkflowEditor({ workflow, onClose }: WorkflowEditorProp
 
   async function handleSave() {
     if (!name.trim()) return;
+    if (scheduleEnabled && !scheduleValidation.valid) return;
     setSaving(true);
     const payload: Workflow = {
       id: workflow?.id ?? generateId(),
@@ -108,9 +141,8 @@ export default function WorkflowEditor({ workflow, onClose }: WorkflowEditorProp
       steps,
       schedule: scheduleEnabled
         ? {
-            ...(workflow?.schedule ?? {}),
-            enabled: true,
-            intervalMinutes: Number(intervalMinutes) || 60,
+            ...draftSchedule!,
+            nextRunAt: undefined,
           }
         : undefined,
       createdAt: workflow?.createdAt ?? Date.now(),
@@ -164,22 +196,67 @@ export default function WorkflowEditor({ workflow, onClose }: WorkflowEditorProp
             placeholder={"project=codex-agent\npriority=high"}
             className="min-h-24 font-mono text-xs"
           />
-          <div className="grid grid-cols-[auto,1fr] gap-3 items-end">
-            <label className="flex items-center gap-2 text-xs text-text-secondary font-medium">
-              <input
-                type="checkbox"
-                checked={scheduleEnabled}
-                onChange={(e) => setScheduleEnabled(e.target.checked)}
+          <div className="rounded-xl border border-border bg-bg-secondary/60 p-4">
+            <div className="grid gap-3 md:grid-cols-[auto,minmax(180px,220px),1fr] md:items-end">
+              <label className="flex items-center gap-2 text-xs text-text-secondary font-medium">
+                <input
+                  type="checkbox"
+                  checked={scheduleEnabled}
+                  onChange={(e) => setScheduleEnabled(e.target.checked)}
+                />
+                Schedule
+              </label>
+
+              <Select
+                label="Mode"
+                value={scheduleMode}
+                onChange={(value) => setScheduleMode(value as "interval" | "cron")}
+                disabled={!scheduleEnabled}
+                options={[
+                  { value: "interval", label: "Interval" },
+                  { value: "cron", label: "Cron" },
+                ]}
               />
-              Schedule
-            </label>
-            <Input
-              label="Interval (minutes)"
-              type="number"
-              value={intervalMinutes}
-              onChange={(e) => setIntervalMinutes(e.target.value)}
-              placeholder="60"
-            />
+
+              {scheduleMode === "cron" ? (
+                <Input
+                  label="Cron expression"
+                  value={cronExpression}
+                  onChange={(e) => setCronExpression(e.target.value)}
+                  disabled={!scheduleEnabled}
+                  placeholder="0 8 * * 1-5"
+                />
+              ) : (
+                <Input
+                  label="Interval (minutes)"
+                  type="number"
+                  value={intervalMinutes}
+                  onChange={(e) => setIntervalMinutes(e.target.value)}
+                  disabled={!scheduleEnabled}
+                  placeholder="60"
+                />
+              )}
+            </div>
+
+            {scheduleEnabled && (
+              <div className="mt-3 space-y-1.5">
+                <div className="text-[11px] text-text-secondary/75">
+                  {describeWorkflowSchedule(draftSchedule)}
+                </div>
+                {scheduleMode === "cron" && (
+                  <div className="text-[10px] text-text-secondary/55">
+                    Examples: `0 8 * * 1-5`, `0 9 * * *`, `*/30 * * * *`
+                  </div>
+                )}
+                {!scheduleValidation.valid ? (
+                  <div className="text-[11px] text-red-300">{scheduleValidation.error}</div>
+                ) : nextRunPreview ? (
+                  <div className="text-[11px] text-accent-green">
+                    Next run: {new Date(nextRunPreview).toLocaleString()}
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
         </div>
 
@@ -234,7 +311,11 @@ export default function WorkflowEditor({ workflow, onClose }: WorkflowEditorProp
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="primary" onClick={handleSave} disabled={!name.trim() || saving}>
+          <Button
+            variant="primary"
+            onClick={handleSave}
+            disabled={!name.trim() || saving || (scheduleEnabled && !scheduleValidation.valid)}
+          >
             <Save size={14} />
             Salvar
           </Button>

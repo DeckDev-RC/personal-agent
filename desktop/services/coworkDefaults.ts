@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { AgentConfig } from "../../src/types/agent.js";
 import type { McpCatalogEntry } from "../../src/types/mcp.js";
 import type { Skill } from "../../src/types/skill.js";
 import type { Workflow, WorkflowSchedule, WorkflowStep } from "../../src/types/workflow.js";
@@ -19,8 +20,15 @@ const workflowDirCandidates = [
   path.resolve(moduleDir, "../../../data/workflows"),
 ];
 
+const agentDirCandidates = [
+  path.resolve(process.cwd(), "data", "agents"),
+  path.resolve(moduleDir, "../../data/agents"),
+  path.resolve(moduleDir, "../../../data/agents"),
+];
+
 let cachedCoworkSkills: Promise<Skill[]> | null = null;
 let cachedCoworkWorkflows: Promise<Workflow[]> | null = null;
+let cachedCoworkAgents: Promise<AgentConfig[]> | null = null;
 
 export const RECOMMENDED_MCP_CATALOG: McpCatalogEntry[] = [
   {
@@ -315,6 +323,33 @@ function normalizeSkill(skill: Partial<Skill>, fallbackTimestamp: number): Skill
   };
 }
 
+function normalizeAgent(agent: Partial<AgentConfig>, fallbackTimestamp: number): AgentConfig {
+  const createdAt = Number(agent.createdAt ?? 0) > 0 ? Number(agent.createdAt) : fallbackTimestamp;
+  const updatedAt = Number(agent.updatedAt ?? 0) > 0 ? Number(agent.updatedAt) : fallbackTimestamp;
+
+  return {
+    id: String(agent.id ?? ""),
+    name: agent.name?.trim() || "Cowork Agent",
+    description: agent.description?.trim() || "",
+    systemPrompt: agent.systemPrompt?.trim() || "You are a helpful cowork assistant.",
+    model: agent.model?.trim() || "openai-codex/gpt-5.4",
+    skillIds: Array.isArray(agent.skillIds)
+      ? agent.skillIds.map((skillId) => String(skillId).trim()).filter(Boolean)
+      : [],
+    mcpServerIds: Array.isArray(agent.mcpServerIds)
+      ? agent.mcpServerIds.map((serverId) => String(serverId).trim()).filter(Boolean)
+      : [],
+    projectContextId: typeof agent.projectContextId === "string" ? agent.projectContextId.trim() || undefined : undefined,
+    defaultWorkspaceId:
+      typeof agent.defaultWorkspaceId === "string" ? agent.defaultWorkspaceId.trim() || undefined : undefined,
+    memoryPolicy: agent.memoryPolicy,
+    toolPolicy: agent.toolPolicy,
+    automationPolicy: agent.automationPolicy,
+    createdAt,
+    updatedAt,
+  };
+}
+
 function normalizeWorkflowStep(step: Partial<WorkflowStep>): WorkflowStep {
   return {
     id: String(step.id ?? ""),
@@ -351,12 +386,24 @@ function normalizeWorkflowSchedule(schedule: Partial<WorkflowSchedule> | undefin
     return undefined;
   }
 
+  const mode =
+    schedule.mode === "cron" || (typeof schedule.cronExpression === "string" && schedule.cronExpression.trim())
+      ? "cron"
+      : "interval";
+
   return {
     enabled: Boolean(schedule.enabled),
+    mode,
     intervalMinutes:
-      typeof schedule.intervalMinutes === "number" && Number.isFinite(schedule.intervalMinutes)
-        ? Math.max(1, Math.round(schedule.intervalMinutes))
-        : 60,
+      mode === "interval"
+        ? typeof schedule.intervalMinutes === "number" && Number.isFinite(schedule.intervalMinutes)
+          ? Math.max(1, Math.round(schedule.intervalMinutes))
+          : 60
+        : undefined,
+    cronExpression:
+      mode === "cron" && typeof schedule.cronExpression === "string"
+        ? schedule.cronExpression.trim()
+        : undefined,
     nextRunAt: typeof schedule.nextRunAt === "number" ? schedule.nextRunAt : undefined,
     lastRunAt: typeof schedule.lastRunAt === "number" ? schedule.lastRunAt : undefined,
     retryOnFailure: schedule.retryOnFailure === true,
@@ -418,6 +465,21 @@ async function resolveWorkflowsDir(): Promise<string> {
   throw new Error("Default cowork workflow directory not found.");
 }
 
+async function resolveAgentsDir(): Promise<string> {
+  for (const candidate of agentDirCandidates) {
+    try {
+      const stat = await fs.stat(candidate);
+      if (stat.isDirectory()) {
+        return candidate;
+      }
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  throw new Error("Default cowork agent directory not found.");
+}
+
 export async function loadDefaultCoworkSkills(): Promise<Skill[]> {
   if (!cachedCoworkSkills) {
     cachedCoworkSkills = (async () => {
@@ -462,4 +524,27 @@ export async function loadDefaultCoworkWorkflows(): Promise<Workflow[]> {
   }
 
   return cachedCoworkWorkflows;
+}
+
+export async function loadDefaultCoworkAgents(): Promise<AgentConfig[]> {
+  if (!cachedCoworkAgents) {
+    cachedCoworkAgents = (async () => {
+      const agentsDir = await resolveAgentsDir();
+      const fileNames = (await fs.readdir(agentsDir))
+        .filter((fileName) => fileName.endsWith(".json"))
+        .sort((left, right) => left.localeCompare(right));
+      const baseTimestamp = Date.now();
+
+      const agents = await Promise.all(
+        fileNames.map(async (fileName, index) => {
+          const raw = await fs.readFile(path.join(agentsDir, fileName), "utf8");
+          return normalizeAgent(JSON.parse(raw) as Partial<AgentConfig>, baseTimestamp + index);
+        }),
+      );
+
+      return agents;
+    })();
+  }
+
+  return cachedCoworkAgents;
 }

@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   FolderTree,
+  FileStack,
   Bot,
   FolderOpen,
   ListTodo,
@@ -25,6 +26,7 @@ export type NavView =
   | "chat"
   | "notifications"
   | "workspace"
+  | "documents"
   | "agents"
   | "contexts"
   | "tasks"
@@ -52,6 +54,7 @@ const chatItems: NavItem[] = [
 
 const managementItems: NavItem[] = [
   { view: "workspace", icon: FolderTree, labelKey: "nav.workspace" },
+  { view: "documents", icon: FileStack, labelKey: "nav.documents" },
   { view: "agents", icon: Bot, labelKey: "nav.agents" },
   { view: "contexts", icon: FolderOpen, labelKey: "nav.contexts" },
   { view: "tasks", icon: ListTodo, labelKey: "nav.tasks" },

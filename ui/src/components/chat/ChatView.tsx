@@ -25,7 +25,7 @@ import { useSkillStore } from "../../stores/skillStore";
 import Badge from "../shared/Badge";
 import Button from "../shared/Button";
 import ContextSelector from "../context/ContextSelector";
-import ChatInput, { type PendingAttachment } from "./ChatInput";
+import ChatInput, { type ChatAgentSuggestion, type PendingAttachment } from "./ChatInput";
 import ConversationList from "./ConversationList";
 import MessageList from "./MessageList";
 
@@ -210,6 +210,9 @@ export default function ChatView({ sessionId }: ChatViewProps) {
   const [browserStatus, setBrowserStatus] = useState<any | null>(null);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [selectedArtifactContent, setSelectedArtifactContent] = useState<string>("");
+  const [draftMessage, setDraftMessage] = useState("");
+  const [agentSuggestion, setAgentSuggestion] = useState<ChatAgentSuggestion | null>(null);
+  const [dismissedSuggestionKey, setDismissedSuggestionKey] = useState("");
 
   useEffect(() => {
     if (!agentsLoaded) void loadAgents();
@@ -243,6 +246,56 @@ export default function ChatView({ sessionId }: ChatViewProps) {
     }
     void selectConversation(sessionId);
   }, [activeConversation?.id, selectConversation, sessionId]);
+
+  const draftSuggestionKey = useMemo(
+    () => `${selectedAgentId}::${draftMessage.trim().toLowerCase()}`,
+    [draftMessage, selectedAgentId],
+  );
+
+  useEffect(() => {
+    const prompt = draftMessage.trim();
+
+    if (streaming || prompt.length < 12 || prompt.split(/\s+/).length < 2) {
+      setAgentSuggestion(null);
+      return;
+    }
+
+    if (draftSuggestionKey === dismissedSuggestionKey) {
+      setAgentSuggestion(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const suggestion = await api().agents.suggest({
+            prompt,
+            currentAgentId: selectedAgentId,
+          });
+
+          if (cancelled) {
+            return;
+          }
+
+          setAgentSuggestion(
+            suggestion && suggestion.agentId !== selectedAgentId
+              ? (suggestion as ChatAgentSuggestion)
+              : null,
+          );
+        } catch {
+          if (!cancelled) {
+            setAgentSuggestion(null);
+          }
+        }
+      })();
+    }, 280);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [dismissedSuggestionKey, draftMessage, draftSuggestionKey, selectedAgentId, streaming]);
 
   const refreshSessionDetails = useCallback(async (sessionId?: string) => {
     if (!sessionId || sessionId.startsWith("draft-")) return;
@@ -389,10 +442,15 @@ export default function ChatView({ sessionId }: ChatViewProps) {
       agent.id,
       nextContextId || undefined,
     );
+    setDraftMessage("");
+    setAgentSuggestion(null);
+    setDismissedSuggestionKey("");
   }, [buildSystemPrompt, createConversation, getSelectedAgent, selectedContextId, setActiveContextId, settings.defaultModelRef]);
 
   const handleAgentSelect = useCallback((agent: AgentConfig) => {
     setSelectedAgentId(agent.id);
+    setAgentSuggestion(null);
+    setDismissedSuggestionKey("");
     if (activeConversation && activeConversation.messages.length === 0) {
       const nextContextId =
         activeConversation.projectContextId ||
@@ -411,6 +469,22 @@ export default function ChatView({ sessionId }: ChatViewProps) {
       });
     }
   }, [activeConversation, buildSystemPrompt, patchActiveConversation, selectedContextId, setActiveContextId, settings.defaultModelRef]);
+
+  const handleApplySuggestedAgent = useCallback((agentId: string) => {
+    const agent = useAgentStore.getState().getAgent(agentId);
+    if (!agent) {
+      return;
+    }
+
+    handleAgentSelect(agent);
+    setAgentSuggestion(null);
+    setDismissedSuggestionKey("");
+  }, [handleAgentSelect]);
+
+  const handleDismissSuggestedAgent = useCallback(() => {
+    setDismissedSuggestionKey(draftSuggestionKey);
+    setAgentSuggestion(null);
+  }, [draftSuggestionKey]);
 
   const handleContextSelect = useCallback(async (contextId: string) => {
     setSelectedContextId(contextId);
@@ -435,23 +509,46 @@ export default function ChatView({ sessionId }: ChatViewProps) {
   const handleSend = useCallback(async ({ message, attachments }: { message: string; attachments: PendingAttachment[] }) => {
     try {
       const agent = getSelectedAgent();
-      const resolvedProjectContextId = selectedContextId || agent.projectContextId || undefined;
+      const effectiveSystemPrompt = buildSystemPrompt(agent);
+      const effectiveModelRef = agent.model || settings.defaultModelRef;
+      const resolvedProjectContextId =
+        selectedContextId ||
+        activeConversation?.projectContextId ||
+        agent.projectContextId ||
+        undefined;
       let current =
         useChatStore.getState().activeConversation ??
         createConversation(
-          agent.model || settings.defaultModelRef,
-          buildSystemPrompt(agent),
+          effectiveModelRef,
+          effectiveSystemPrompt,
           agent.id,
           resolvedProjectContextId,
         );
 
+      if (useChatStore.getState().activeConversation) {
+        patchActiveConversation({
+          agentId: agent.id,
+          projectContextId: resolvedProjectContextId,
+          model: effectiveModelRef,
+          systemPrompt: effectiveSystemPrompt,
+        });
+      }
+
+      current = {
+        ...current,
+        agentId: agent.id,
+        projectContextId: resolvedProjectContextId,
+        model: effectiveModelRef,
+        systemPrompt: effectiveSystemPrompt,
+      };
+
       if (attachments.length > 0 && current.id.startsWith("draft-")) {
         const createdSession = await api().sessions.create({
           title: current.title,
-          modelRef: current.model,
-          systemPrompt: current.systemPrompt,
+          modelRef: effectiveModelRef,
+          systemPrompt: effectiveSystemPrompt,
           agentId: agent.id,
-          projectContextId: current.projectContextId ?? resolvedProjectContextId,
+          projectContextId: resolvedProjectContextId,
         });
         attachRemoteSession(createdSession.sessionId);
         current = {
@@ -474,13 +571,15 @@ export default function ChatView({ sessionId }: ChatViewProps) {
           );
 
       addUserMessage(message);
+      setAgentSuggestion(null);
+      setDismissedSuggestionKey("");
       const runResult = await api().startChat({
         sessionId: current.id.startsWith("draft-") ? undefined : current.id,
         title: current.title,
         agentId: agent.id,
-        projectContextId: current.projectContextId ?? resolvedProjectContextId,
-        modelRef: current.model,
-        systemPrompt: current.systemPrompt,
+        projectContextId: resolvedProjectContextId,
+        modelRef: effectiveModelRef,
+        systemPrompt: effectiveSystemPrompt,
         messages: [
           ...current.messages,
           {
@@ -507,7 +606,20 @@ export default function ChatView({ sessionId }: ChatViewProps) {
     } catch (error) {
       errorStreaming(error instanceof Error ? error.message : String(error));
     }
-  }, [addUserMessage, attachRemoteSession, buildSystemPrompt, createConversation, errorStreaming, getSelectedAgent, loadConversations, selectedContextId, settings.defaultModelRef, startStreaming]);
+  }, [
+    activeConversation?.projectContextId,
+    addUserMessage,
+    attachRemoteSession,
+    buildSystemPrompt,
+    createConversation,
+    errorStreaming,
+    getSelectedAgent,
+    loadConversations,
+    patchActiveConversation,
+    selectedContextId,
+    settings.defaultModelRef,
+    startStreaming,
+  ]);
 
   const handleWorkspaceSave = useCallback(async () => {
     if (!activeConversation || activeConversation.id.startsWith("draft-")) {
@@ -717,6 +829,10 @@ export default function ChatView({ sessionId }: ChatViewProps) {
                   onAbort={abortStreaming}
                   disabled={!canRunSelectedModel || streaming}
                   streaming={streaming}
+                  onDraftChange={setDraftMessage}
+                  agentSuggestion={agentSuggestion}
+                  onApplyAgentSuggestion={handleApplySuggestedAgent}
+                  onDismissAgentSuggestion={handleDismissSuggestedAgent}
                 />
               </div>
             </>

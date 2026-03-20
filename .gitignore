@@ -4,6 +4,8 @@ ui-dist/
 data/*
 !data/skills/
 !data/skills/**
+!data/agents/
+!data/agents/**
 !data/workflows/
 !data/workflows/**
 temp-electron-app/

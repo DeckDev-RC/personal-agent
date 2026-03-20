@@ -10,7 +10,7 @@ import type { McpServerConfig } from "../../src/types/mcp.js";
 import type { ProjectContext } from "../../src/types/projectContext.js";
 import type { Skill } from "../../src/types/skill.js";
 import type { Workflow } from "../../src/types/workflow.js";
-import { loadDefaultCoworkSkills, loadDefaultCoworkWorkflows } from "./coworkDefaults.js";
+import { loadDefaultCoworkAgents, loadDefaultCoworkSkills, loadDefaultCoworkWorkflows } from "./coworkDefaults.js";
 import { ensureV2Db } from "./v2Db.js";
 
 export type V2AppSettings = {
@@ -108,13 +108,15 @@ function normalizeSettings(settings?: Partial<V2AppSettings> | null): V2AppSetti
   };
 }
 
+let agentSeedPromise: Promise<void> | null = null;
+let coworkAgentsSeeded = false;
 let skillSeedPromise: Promise<void> | null = null;
 let coworkSkillsSeeded = false;
 let workflowSeedPromise: Promise<void> | null = null;
 let coworkWorkflowsSeeded = false;
 
 async function seedDefaultEntities<T extends { id: string; updatedAt?: number }>(params: {
-  kind: "skills" | "workflows";
+  kind: "agents" | "skills" | "workflows";
   defaults: T[];
 }): Promise<void> {
   const db = await ensureV2Db();
@@ -158,6 +160,29 @@ async function ensureDefaultCoworkSkillsSeeded(): Promise<void> {
     await skillSeedPromise;
   } finally {
     skillSeedPromise = null;
+  }
+}
+
+async function ensureDefaultCoworkAgentsSeeded(): Promise<void> {
+  if (coworkAgentsSeeded) {
+    return;
+  }
+
+  if (agentSeedPromise) {
+    await agentSeedPromise;
+    return;
+  }
+
+  agentSeedPromise = (async () => {
+    const defaults = await loadDefaultCoworkAgents();
+    await seedDefaultEntities({ kind: "agents", defaults });
+    coworkAgentsSeeded = true;
+  })();
+
+  try {
+    await agentSeedPromise;
+  } finally {
+    agentSeedPromise = null;
   }
 }
 
@@ -221,10 +246,12 @@ async function deleteEntity(
 }
 
 export async function listAgentsV2(): Promise<AgentConfig[]> {
+  await ensureDefaultCoworkAgentsSeeded();
   return await listEntities<AgentConfig>("agents");
 }
 
 export async function getAgentV2(id: string): Promise<AgentConfig | null> {
+  await ensureDefaultCoworkAgentsSeeded();
   return await getEntity<AgentConfig>("agents", id);
 }
 

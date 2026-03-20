@@ -127,6 +127,10 @@ contextBridge.exposeInMainWorld("codexAgent", {
     saveSettings: (settings: any) => ipcRenderer.invoke("store:settings:save", settings),
   },
 
+  agents: {
+    suggest: (args: { prompt: string; currentAgentId?: string }) => ipcRenderer.invoke("agents:suggest", args),
+  },
+
   // MCP runtime
   mcp: {
     connect: (config: any) => ipcRenderer.invoke("mcp:connect", config),
@@ -189,6 +193,17 @@ contextBridge.exposeInMainWorld("codexAgent", {
   cowork: {
     workspace: () => ipcRenderer.invoke("cowork:workspace"),
     file: (relativePath: string) => ipcRenderer.invoke("cowork:file", relativePath),
+  },
+
+  documents: {
+    listTemplates: () => ipcRenderer.invoke("documents:listTemplates"),
+    render: (args: { templateId: string; values?: Record<string, string> }) =>
+      ipcRenderer.invoke("documents:render", args),
+    export: (args: {
+      templateId: string;
+      values?: Record<string, string>;
+      format: "markdown" | "html" | "pdf";
+    }) => ipcRenderer.invoke("documents:export", args),
   },
 
   browser: {

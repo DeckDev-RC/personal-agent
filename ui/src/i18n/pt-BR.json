@@ -7,6 +7,7 @@
     "chat": "Chat",
     "notifications": "Notificacoes",
     "workspace": "Workspace",
+    "documents": "Documentos",
     "agents": "Agentes",
     "contexts": "Contextos",
     "tasks": "Tarefas",
@@ -46,6 +47,20 @@
     "yesterday": "Ontem",
     "scrollToBottom": "Rolar para baixo",
     "voiceInput": "Entrada por voz",
+    "agentSuggestion": {
+      "label": "Agente sugerido",
+      "use": "Usar agente",
+      "dismiss": "Dispensar",
+      "reason": "Melhor ajuste para {{category}}.",
+      "reasonWithKeywords": "Melhor ajuste para {{category}}. Sinais: {{keywords}}.",
+      "categories": {
+        "pm": "planejamento e status",
+        "communication": "comunicacao e escrita",
+        "research": "pesquisa e analise",
+        "technical": "trabalho tecnico",
+        "generic": "esta solicitacao"
+      }
+    },
     "console": {
       "sessionsTitle": "Sessões",
       "sessionsSubtitle": "Workspaces do agente e transcrições",
@@ -255,6 +270,14 @@
       "tasks": "Tarefas"
     }
   },
+  "documents": {
+    "title": "Documentos",
+    "subtitle": "Gere documentos de trabalho a partir de templates e exporte para o workspace local de cowork.",
+    "refresh": "Atualizar templates",
+    "galleryTitle": "Galeria de templates",
+    "emptyTitle": "Nenhum template disponivel",
+    "emptyDescription": "Adicione templates markdown em data/templates para popular esta tela."
+  },
   "dashboard": {
     "title": "Hoje",
     "subtitle": "Um painel rapido com contexto, agenda manual, atividade recente e atalhos para comecar o dia de trabalho.",
@@ -456,6 +479,7 @@
     "openToday": "Abrir Hoje",
     "newChat": "Nova conversa",
     "openWorkspace": "Abrir workspace",
+    "openDocuments": "Abrir documentos",
     "createAgent": "Criar agente",
     "createSkill": "Criar skill",
     "createWorkflow": "Criar workflow",

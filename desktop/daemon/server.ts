@@ -4,11 +4,12 @@ import type { AddressInfo } from "node:net";
 import type { DaemonEnvelope, DaemonHealthStatus } from "../../src/types/daemon.js";
 import type { Workflow } from "../../src/types/workflow.js";
 import type { JobRecord } from "../../src/types/runtime.js";
-import type { AgentConfig } from "../../src/types/agent.js";
+import type { AgentConfig, AgentSuggestion } from "../../src/types/agent.js";
 import type { McpServerConfig } from "../../src/types/mcp.js";
 import type { ProjectContext } from "../../src/types/projectContext.js";
 import type { ReminderRecord } from "../../src/types/reminder.js";
 import type { Skill } from "../../src/types/skill.js";
+import { computeNextWorkflowScheduleRunAt, normalizeWorkflowSchedule, validateWorkflowSchedule } from "../../src/workflowSchedule.js";
 import type { V2AppSettings } from "../services/v2EntityStore.js";
 import { enqueueScopedJob } from "../services/jobQueue.js";
 import * as mcp from "../services/mcpManager.js";
@@ -43,6 +44,7 @@ import {
   stopReminderScheduler,
   updateReminder,
 } from "../services/reminderScheduler.js";
+import { suggestAgentForPrompt } from "../services/agentRouter.js";
 import { completeTask, createTask, deleteTask, getTask, listTasks, updateTask } from "../services/taskManager.js";
 import {
   deleteAgentV2,
@@ -124,12 +126,11 @@ function computeNextRunAt(params: {
   from?: number;
   retryAttempt?: number;
 }): number {
-  const from = params.from ?? Date.now();
-  if (params.retryAttempt && params.retryAttempt > 0) {
-    const delayMinutes = Math.min(2 ** (params.retryAttempt - 1), 30);
-    return from + delayMinutes * 60_000;
-  }
-  return from + params.workflow.schedule!.intervalMinutes * 60_000;
+  return computeNextWorkflowScheduleRunAt({
+    schedule: params.workflow.schedule!,
+    from: params.from,
+    retryAttempt: params.retryAttempt,
+  });
 }
 
 export class CodexAgentDaemon {
@@ -184,11 +185,26 @@ export class CodexAgentDaemon {
 
     const workflows = await listWorkflowsV2();
     for (const workflow of workflows) {
-      if (!workflow.schedule?.enabled || !workflow.schedule.intervalMinutes) {
+      const schedule = normalizeWorkflowSchedule(workflow.schedule);
+      if (!schedule?.enabled) {
         continue;
       }
-      const nextRunAt = workflow.schedule.nextRunAt ?? Date.now();
-      await this.scheduleWorkflow(workflow, nextRunAt <= Date.now() ? Date.now() + 1_000 : nextRunAt);
+      const nextRunAt =
+        typeof schedule.nextRunAt === "number" && schedule.nextRunAt > Date.now()
+          ? schedule.nextRunAt
+          : computeNextRunAt({
+              workflow: {
+                ...workflow,
+                schedule,
+              },
+            });
+      await this.scheduleWorkflow(
+        {
+          ...workflow,
+          schedule,
+        },
+        nextRunAt <= Date.now() ? Date.now() + 1_000 : nextRunAt,
+      );
     }
   }
 
@@ -361,7 +377,22 @@ export class CodexAgentDaemon {
       } else if (kind === "skills") {
         await saveSkillV2(body as Skill);
       } else if (kind === "workflows") {
-        await saveWorkflowV2(body as Workflow);
+        const workflow = body as Workflow;
+        const schedule = normalizeWorkflowSchedule(workflow.schedule);
+        const validation = validateWorkflowSchedule(schedule);
+        if (!validation.valid) {
+          sendJson(res, 400, { ok: false, error: validation.error ?? "Invalid workflow schedule." });
+          return;
+        }
+        await saveWorkflowV2({
+          ...workflow,
+          schedule: schedule
+            ? {
+                ...schedule,
+                nextRunAt: undefined,
+              }
+            : undefined,
+        });
         await this.refreshWorkflowSchedules();
       } else if (kind === "mcp") {
         await saveMcpServerV2(body as McpServerConfig);
@@ -394,6 +425,16 @@ export class CodexAgentDaemon {
         return;
       }
       sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (url.pathname === "/agents/suggest" && method === "POST") {
+      const body = await readJson<{ prompt: string; currentAgentId?: string }>(req);
+      const suggestion: AgentSuggestion | null = await suggestAgentForPrompt({
+        prompt: body.prompt ?? "",
+        currentAgentId: body.currentAgentId,
+      });
+      sendJson(res, 200, suggestion);
       return;
     }
 

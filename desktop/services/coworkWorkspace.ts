@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Skill } from "../../src/types/skill.js";
+import { isSupportedWorkspaceDocument } from "./templateEngine.js";
 import { listSkillsV2 } from "./v2EntityStore.js";
 
 export type CoworkWorkspaceCategory = "meetings" | "drafts" | "research" | "tasks";
@@ -151,6 +152,9 @@ async function walkDirectory(rootPath: string, relativePath = ""): Promise<strin
     const nextRelative = relativePath ? path.join(relativePath, entry.name) : entry.name;
     if (entry.isDirectory()) {
       files.push(...(await walkDirectory(rootPath, nextRelative)));
+      continue;
+    }
+    if (!isSupportedWorkspaceDocument(entry.name)) {
       continue;
     }
     files.push(nextRelative);

@@ -13,6 +13,7 @@ import SkillListView from "../skills/SkillListView";
 import McpListView from "../mcp/McpListView";
 import WorkspaceExplorer from "../workspace/WorkspaceExplorer";
 import WorkflowListView from "../workflows/WorkflowListView";
+import DocumentsView from "../documents/DocumentsView";
 import SettingsView from "../settings/SettingsView";
 import UsageView from "../analytics/UsageView";
 import LogsView from "../analytics/LogsView";
@@ -97,6 +98,8 @@ export default function Shell() {
         return <SettingsView />;
       case "workspace":
         return <WorkspaceExplorer initialSelectedPath={routeParam ? decodeURIComponent(routeParam) : undefined} />;
+      case "documents":
+        return <DocumentsView />;
       case "agents":
         return <AgentListView />;
       case "contexts":
