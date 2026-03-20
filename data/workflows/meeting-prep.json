@@ -1,0 +1,39 @@
+{
+  "id": "cowork-meeting-prep",
+  "name": "Meeting Prep",
+  "description": "Assemble context, open items, and a focused prep brief before an important meeting.",
+  "steps": [
+    {
+      "id": "task_snapshot",
+      "type": "tool-call",
+      "toolName": "manage_tasks",
+      "toolArgs": {
+        "action": "list"
+      }
+    },
+    {
+      "id": "context_memory",
+      "type": "memory-query",
+      "memoryQuery": "{{context_query}}",
+      "memoryLimit": 8
+    },
+    {
+      "id": "draft_prep",
+      "type": "agent-chat",
+      "prompt": "Prepare a meeting brief for '{{meeting_topic}}' with '{{participants}}'. Use connected calendar, email, docs, or other cowork tools if they are available. If not, explicitly call out what is missing.\n\nOpen tasks:\n{{step.task_snapshot.output}}\n\nRelevant memory:\n{{step.context_memory.output}}\n\nReturn sections: Objective, Participant context, Open questions, Risks, Recommended agenda, Suggested next steps."
+    }
+  ],
+  "variables": {
+    "meeting_topic": "Project sync",
+    "participants": "Team and stakeholders",
+    "context_query": "project sync decision blocker next step stakeholder"
+  },
+  "schedule": {
+    "enabled": false,
+    "intervalMinutes": 720,
+    "retryOnFailure": true,
+    "maxRetries": 2
+  },
+  "createdAt": 0,
+  "updatedAt": 0
+}

@@ -5,7 +5,7 @@ import type { Workflow } from "../../src/types/workflow.js";
 import type { SessionMessageRecord } from "../../src/types/runtime.js";
 import { buildTaskPolicy, classifyTask } from "./taskPolicy.js";
 import { streamModelResponse } from "./runtimeCore.js";
-import { getSettingsV2, type V2AppSettings } from "./v2EntityStore.js";
+import { getSettingsV2, listMcpServersV2, type V2AppSettings } from "./v2EntityStore.js";
 import {
   createRunRecord,
   createSessionRecord,
@@ -14,6 +14,7 @@ import {
   patchSessionRecord,
   saveArtifactRecord,
   saveCheckpointRecord,
+  saveMemorySourceContent,
   saveMessageRecord,
   searchMemoryRecords,
   updateRunRecord,
@@ -28,7 +29,9 @@ import {
 } from "./executionRegistry.js";
 import { executeTrackedToolInvocation, startDirectToolInvocation } from "./toolExecutionService.js";
 import { enqueueScopedJob } from "./jobQueue.js";
-import { gatherContextForPrompt, reindexWorkspace } from "./workspaceIndex.js";
+import { injectProjectContextPrompt, resolveProjectContextId } from "./projectContext.js";
+import { ensureCoworkWorkspaceStructure, inferCoworkSkillFromPrompt, saveCoworkOutput } from "./coworkWorkspace.js";
+import { gatherContextForPrompt, reindexWorkspace, setWorkspaceRootForSession } from "./workspaceIndex.js";
 
 const EMPTY_USAGE: Usage = {
   input: 0,
@@ -368,12 +371,99 @@ async function persistAssistantPhaseMessage(params: {
   });
 }
 
+async function maybePrepareCoworkWorkspaceForSession(params: {
+  sessionId: string;
+  systemPrompt: string;
+  currentWorkspaceRoot?: string;
+}): Promise<string | undefined> {
+  const coworkSkill = await inferCoworkSkillFromPrompt(params.systemPrompt);
+  if (!coworkSkill) {
+    return params.currentWorkspaceRoot;
+  }
+
+  const snapshot = await ensureCoworkWorkspaceStructure();
+  if (
+    params.currentWorkspaceRoot &&
+    params.currentWorkspaceRoot !== process.cwd() &&
+    params.currentWorkspaceRoot !== snapshot.rootPath
+  ) {
+    return params.currentWorkspaceRoot;
+  }
+  if (params.currentWorkspaceRoot === snapshot.rootPath) {
+    return snapshot.rootPath;
+  }
+
+  await setWorkspaceRootForSession(params.sessionId, snapshot.rootPath);
+  await patchSessionRecord(params.sessionId, {
+    workspaceRoot: snapshot.rootPath,
+  });
+  return snapshot.rootPath;
+}
+
+async function maybePersistCoworkOutput(params: {
+  sessionId: string;
+  runId: string;
+  systemPrompt: string;
+  prompt: string;
+  output: string;
+  projectContextId?: string;
+  title?: string;
+}): Promise<void> {
+  const saved = await saveCoworkOutput({
+    sessionId: params.sessionId,
+    runId: params.runId,
+    systemPrompt: params.systemPrompt,
+    prompt: params.prompt,
+    output: params.output,
+    projectContextId: params.projectContextId,
+    title: params.title,
+  });
+
+  if (!saved) {
+    return;
+  }
+
+  await saveArtifactRecord({
+    artifactId: randomUUID(),
+    sessionId: params.sessionId,
+    runId: params.runId,
+    type: "file",
+    label: `Cowork output: ${saved.title}`,
+    filePath: saved.absolutePath,
+    metadata: {
+      relativePath: saved.relativePath,
+      category: saved.category,
+      skillId: saved.skillId,
+      skillName: saved.skillName,
+      projectContextId: saved.projectContextId,
+    },
+  });
+
+  await saveMemorySourceContent({
+    sourceId: `cowork:${params.sessionId}:${params.runId}:${saved.relativePath}`,
+    sourceType: "note",
+    sessionId: params.sessionId,
+    runId: params.runId,
+    path: saved.relativePath,
+    title: saved.title,
+    content: params.output,
+  });
+
+  try {
+    await reindexWorkspace(params.sessionId);
+  } catch {
+    // Best-effort indexing for the cowork workspace.
+  }
+}
+
 async function executeSimplePromptRun(params: {
   runId: string;
   sessionId: string;
   prompt: string;
   settings: V2AppSettings;
   systemPrompt: string;
+  title?: string;
+  projectContextId?: string;
   mcpServerIds: string[];
   onEvent: (event: RuntimeEvent) => void;
   workflowId?: string;
@@ -420,6 +510,16 @@ async function executeSimplePromptRun(params: {
       content: result.text,
     });
 
+    await maybePersistCoworkOutput({
+      sessionId: params.sessionId,
+      runId: run.runId,
+      systemPrompt: params.systemPrompt,
+      prompt: params.prompt,
+      output: result.text,
+      projectContextId: params.projectContextId,
+      title: params.title,
+    });
+
     await updateRunRecord(run.runId, {
       status: "completed",
       phase: "complete",
@@ -461,6 +561,8 @@ async function executePromptRun(params: {
   prompt: string;
   settings: V2AppSettings;
   systemPrompt: string;
+  title?: string;
+  projectContextId?: string;
   mcpServerIds: string[];
   onEvent: (event: RuntimeEvent) => void;
   workflowId?: string;
@@ -609,6 +711,19 @@ async function executePromptRun(params: {
       reviewText,
       attempt,
     });
+
+    if (success && latestExecutionText.trim()) {
+      await maybePersistCoworkOutput({
+        sessionId: params.sessionId,
+        runId: run.runId,
+        systemPrompt: params.systemPrompt,
+        prompt: params.prompt,
+        output: latestExecutionText,
+        projectContextId: params.projectContextId,
+        title: params.title,
+      });
+    }
+
     params.onEvent({ type: "phase", runId: run.runId, sessionId: params.sessionId, phase: "complete" });
     params.onEvent({
       type: "done",
@@ -641,6 +756,7 @@ export async function startPromptRun(params: {
   sessionId?: string;
   title?: string;
   agentId?: string;
+  projectContextId?: string;
   modelRef: string;
   systemPrompt: string;
   prompt: string;
@@ -657,6 +773,11 @@ export async function startPromptRun(params: {
 }): Promise<{ runId: string; sessionId: string; uiMode: "simple" | "agentic" }> {
   const settings = await getSettingsV2();
   const existingSession = params.sessionId ? await getSessionRecord(params.sessionId) : null;
+  const resolvedProjectContextId = await resolveProjectContextId({
+    requestedProjectContextId: params.projectContextId?.trim() || undefined,
+    sessionProjectContextId: existingSession?.projectContextId,
+    agentId: params.agentId ?? existingSession?.agentId,
+  });
   const session =
     existingSession ??
     (await createSessionRecord({
@@ -665,18 +786,35 @@ export async function startPromptRun(params: {
       model: params.modelRef,
       systemPrompt: params.systemPrompt,
       agentId: params.agentId,
+      projectContextId: resolvedProjectContextId,
     }));
+  const preparedWorkspaceRoot = await maybePrepareCoworkWorkspaceForSession({
+    sessionId: session.sessionId,
+    systemPrompt: params.systemPrompt,
+    currentWorkspaceRoot: session.workspaceRoot,
+  });
+  if (existingSession && existingSession.projectContextId !== resolvedProjectContextId) {
+    await patchSessionRecord(existingSession.sessionId, {
+      projectContextId: resolvedProjectContextId ?? "",
+    });
+  }
+  const effectiveSystemPrompt = await injectProjectContextPrompt(
+    params.systemPrompt,
+    resolvedProjectContextId,
+  );
   const taskType = classifyTask({
     prompt: params.prompt,
-    workspaceRoot: session.workspaceRoot,
+    workspaceRoot: preparedWorkspaceRoot ?? session.workspaceRoot,
   });
   const uiMode: "simple" | "agentic" = !settings.planMode && taskType === "chat_simple" ? "simple" : "agentic";
+  const sessionTitle = session.messageCount === 0 ? params.prompt.slice(0, 60) : session.title;
 
   await patchSessionRecord(session.sessionId, {
-    title: session.messageCount === 0 ? params.prompt.slice(0, 60) : session.title,
+    title: sessionTitle,
     model: params.modelRef,
     systemPrompt: params.systemPrompt,
     agentId: params.agentId,
+    projectContextId: resolvedProjectContextId ?? "",
   });
   const attachmentSummary =
     params.attachments && params.attachments.length > 0
@@ -705,7 +843,9 @@ export async function startPromptRun(params: {
       sessionId: session.sessionId,
       prompt: params.prompt,
       settings,
-      systemPrompt: params.systemPrompt,
+      systemPrompt: effectiveSystemPrompt,
+      title: sessionTitle,
+      projectContextId: resolvedProjectContextId,
       mcpServerIds: params.mcpServerIds ?? [],
       onEvent: params.onEvent,
       taskType: "chat_simple",
@@ -720,7 +860,9 @@ export async function startPromptRun(params: {
       sessionId: session.sessionId,
       prompt: params.prompt,
       settings,
-      systemPrompt: params.systemPrompt,
+      systemPrompt: effectiveSystemPrompt,
+      title: sessionTitle,
+      projectContextId: resolvedProjectContextId,
       mcpServerIds: params.mcpServerIds ?? [],
       onEvent: params.onEvent,
       taskType: agenticTaskType,
@@ -807,13 +949,41 @@ function evaluateWorkflowCondition(condition: string | undefined, variables: Rec
   return Boolean(getNestedValue(variables, rendered) ?? rendered);
 }
 
+function parseWorkflowToolArgValue(value: string): unknown {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (/^(true|false)$/i.test(trimmed)) {
+    return trimmed.toLowerCase() === "true";
+  }
+
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    return Number(trimmed);
+  }
+
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
+  }
+
+  return value;
+}
+
 function resolveWorkflowToolArgs(
   args: Record<string, string> | undefined,
   variables: Record<string, unknown>,
 ): Record<string, unknown> {
   if (!args) return {};
   return Object.fromEntries(
-    Object.entries(args).map(([key, value]) => [key, renderWorkflowTemplate(value, variables)]),
+    Object.entries(args).map(([key, value]) => {
+      const rendered = renderWorkflowTemplate(value, variables);
+      return [key, parseWorkflowToolArgValue(rendered)];
+    }),
   );
 }
 
@@ -822,127 +992,158 @@ export async function startWorkflowRun(params: {
   modelRef: string;
   systemPrompt: string;
   onEvent: (event: RuntimeEvent) => void;
-}): Promise<{ sessionId: string; variables: Record<string, unknown>; stepOutputs: Record<string, unknown> }> {
+}): Promise<{ runId: string; sessionId: string; variables: Record<string, unknown>; stepOutputs: Record<string, unknown> }> {
   const session = await createSessionRecord({
     title: params.workflow.name,
     model: params.modelRef,
     systemPrompt: params.systemPrompt,
   });
-
-  const settings = await getSettingsV2();
-  const variables: Record<string, unknown> = { ...params.workflow.variables };
-  const stepOutputs: Record<string, unknown> = {};
-  const registeredTools = buildRegisteredTools([]);
-
-  for (let index = 0; index < params.workflow.steps.length; index += 1) {
-    const step = params.workflow.steps[index];
-    let success = true;
-    let output: unknown = "";
-    const artifacts: string[] = [];
-
-    if (step.type === "conditional") {
-      success = evaluateWorkflowCondition(step.condition, variables);
-      output = success;
-    } else if (step.type === "delay") {
-      await new Promise<void>((resolve) => setTimeout(resolve, Number(step.delayMs ?? 0)));
-      output = `Delayed ${step.delayMs ?? 0}ms`;
-    } else if (step.type === "tool-call") {
-      const tool = registeredTools.find((entry) => entry.publicName === step.toolName);
-      if (!tool) {
-        throw new Error(`Workflow tool "${step.toolName}" not found.`);
-      }
-      const result = await startDirectToolInvocation({
-        sessionId: session.sessionId,
-        tool,
-        args: resolveWorkflowToolArgs(step.toolArgs, variables),
-      });
-      success = !result.isError;
-      output = result.content;
-      artifacts.push(...result.artifactsCreated);
-      setNestedValue(variables, `step.${step.id}.toolResult`, result);
-    } else if (step.type === "memory-query") {
-      const query = tokenizeWorkflowQuery(renderWorkflowTemplate(step.memoryQuery, variables));
-      const results = await searchMemoryRecords({
-        query,
-        sessionId: session.sessionId,
-        workspaceId: session.workspaceId,
-        limit: step.memoryLimit ?? 4,
-      });
-      output = results.map((item) => `${item.title}\n${item.content}`).join("\n\n---\n\n");
-      setNestedValue(variables, `step.${step.id}.memoryResults`, results);
-    } else if (step.type === "reindex-workspace") {
-      const workspaceScopeId = session.workspaceId ?? session.sessionId;
-      const job = await enqueueScopedJob({
-        kind: "workspace_reindex",
-        scopeType: "workspace",
-        scopeId: workspaceScopeId,
-        payload: {
-          sessionId: session.sessionId,
-          workspaceId: session.workspaceId,
-          trigger: "manual",
-          stepId: step.id,
-        },
-        run: async () => {
-          await reindexWorkspace(session.sessionId);
-          return "Workspace reindexed";
-        },
-      });
-      output = `Workspace reindex job queued: ${job.jobId}`;
-      setNestedValue(variables, `step.${step.id}.jobId`, job.jobId);
-      setNestedValue(variables, `step.${step.id}.job`, job);
-    } else {
-      const prompt = renderWorkflowTemplate(step.prompt?.trim(), variables);
-      if (!prompt) {
-        continue;
-      }
-      await executePromptRun({
-        runId: randomUUID(),
-        sessionId: session.sessionId,
-        prompt,
-        settings,
-        systemPrompt: params.systemPrompt,
-        mcpServerIds: [],
-        onEvent: params.onEvent,
-        workflowId: params.workflow.id,
-        taskType: "plan_research",
-      });
-      const messages = await listMessagesForSession(session.sessionId);
-      output =
-        [...messages]
-          .reverse()
-          .find((message) => message.role === "assistant")?.content ?? "";
-    }
-
-    setNestedValue(variables, `step.${step.id}.status`, success ? "success" : "error");
-    setNestedValue(variables, `step.${step.id}.output`, output);
-    setNestedValue(variables, `step.${step.id}.artifacts`, artifacts);
-    stepOutputs[step.id] = {
-      status: success ? "success" : "error",
-      output,
-      artifacts,
-      toolResult: getNestedValue(variables, `step.${step.id}.toolResult`),
-      memoryResults: getNestedValue(variables, `step.${step.id}.memoryResults`),
-      jobId: getNestedValue(variables, `step.${step.id}.jobId`),
-    };
-
-    const nextStepId = success ? step.onSuccess : step.onFailure;
-    if (nextStepId) {
-      const nextIndex = params.workflow.steps.findIndex((candidate) => candidate.id === nextStepId);
-      if (nextIndex >= 0) {
-        index = nextIndex - 1;
-      }
-    }
-  }
-
-  await saveArtifactRecord({
-    artifactId: randomUUID(),
+  const runId = randomUUID();
+  await createRunRecord({
+    runId,
     sessionId: session.sessionId,
-    runId: "workflow",
-    type: "report",
-    label: `Workflow output: ${params.workflow.name}`,
-    contentText: JSON.stringify({ variables, stepOutputs }, null, 2),
-    metadata: { workflowId: params.workflow.id },
+    workflowId: params.workflow.id,
+    taskType: "plan_research",
+    phase: "execute",
+    status: "running",
+    prompt: `Workflow: ${params.workflow.name}`,
+    attempt: 0,
   });
 
-  return { sessionId: session.sessionId, variables, stepOutputs };
+  const settings = await getSettingsV2();
+  const enabledMcpServerIds = (await listMcpServersV2())
+    .filter((server) => server.enabled)
+    .map((server) => server.id);
+  const variables: Record<string, unknown> = { ...params.workflow.variables };
+  const stepOutputs: Record<string, unknown> = {};
+  const registeredTools = buildRegisteredTools(enabledMcpServerIds);
+
+  try {
+    for (let index = 0; index < params.workflow.steps.length; index += 1) {
+      const step = params.workflow.steps[index];
+      let success = true;
+      let output: unknown = "";
+      const artifacts: string[] = [];
+
+      if (step.type === "conditional") {
+        success = evaluateWorkflowCondition(step.condition, variables);
+        output = success;
+      } else if (step.type === "delay") {
+        await new Promise<void>((resolve) => setTimeout(resolve, Number(step.delayMs ?? 0)));
+        output = `Delayed ${step.delayMs ?? 0}ms`;
+      } else if (step.type === "tool-call") {
+        const tool = registeredTools.find((entry) => entry.publicName === step.toolName);
+        if (!tool) {
+          throw new Error(`Workflow tool "${step.toolName}" not found.`);
+        }
+        const result = await startDirectToolInvocation({
+          sessionId: session.sessionId,
+          tool,
+          args: resolveWorkflowToolArgs(step.toolArgs, variables),
+        });
+        success = !result.isError;
+        output = result.content;
+        artifacts.push(...result.artifactsCreated);
+        setNestedValue(variables, `step.${step.id}.toolResult`, result);
+      } else if (step.type === "memory-query") {
+        const renderedQuery = renderWorkflowTemplate(step.memoryQuery, variables).trim();
+        const query = renderedQuery ? tokenizeWorkflowQuery(renderedQuery) : "";
+        const results = query
+          ? await searchMemoryRecords({
+              query,
+              workspaceId: session.workspaceId,
+              limit: step.memoryLimit ?? 4,
+            })
+          : [];
+        output = results.map((item) => `${item.title}\n${item.content}`).join("\n\n---\n\n");
+        setNestedValue(variables, `step.${step.id}.memoryResults`, results);
+      } else if (step.type === "reindex-workspace") {
+        const workspaceScopeId = session.workspaceId ?? session.sessionId;
+        const job = await enqueueScopedJob({
+          kind: "workspace_reindex",
+          scopeType: "workspace",
+          scopeId: workspaceScopeId,
+          payload: {
+            sessionId: session.sessionId,
+            workspaceId: session.workspaceId,
+            trigger: "manual",
+            stepId: step.id,
+          },
+          run: async () => {
+            await reindexWorkspace(session.sessionId);
+            return "Workspace reindexed";
+          },
+        });
+        output = `Workspace reindex job queued: ${job.jobId}`;
+        setNestedValue(variables, `step.${step.id}.jobId`, job.jobId);
+        setNestedValue(variables, `step.${step.id}.job`, job);
+      } else {
+        const prompt = renderWorkflowTemplate(step.prompt?.trim(), variables);
+        if (!prompt) {
+          continue;
+        }
+        await executePromptRun({
+          runId: randomUUID(),
+          sessionId: session.sessionId,
+          prompt,
+          settings,
+          systemPrompt: params.systemPrompt,
+          mcpServerIds: enabledMcpServerIds,
+          onEvent: params.onEvent,
+          workflowId: params.workflow.id,
+          taskType: "plan_research",
+        });
+        const messages = await listMessagesForSession(session.sessionId);
+        output =
+          [...messages]
+            .reverse()
+            .find((message) => message.role === "assistant")?.content ?? "";
+      }
+
+      setNestedValue(variables, `step.${step.id}.status`, success ? "success" : "error");
+      setNestedValue(variables, `step.${step.id}.output`, output);
+      setNestedValue(variables, `step.${step.id}.artifacts`, artifacts);
+      stepOutputs[step.id] = {
+        status: success ? "success" : "error",
+        output,
+        artifacts,
+        toolResult: getNestedValue(variables, `step.${step.id}.toolResult`),
+        memoryResults: getNestedValue(variables, `step.${step.id}.memoryResults`),
+        jobId: getNestedValue(variables, `step.${step.id}.jobId`),
+      };
+
+      const nextStepId = success ? step.onSuccess : step.onFailure;
+      if (nextStepId) {
+        const nextIndex = params.workflow.steps.findIndex((candidate) => candidate.id === nextStepId);
+        if (nextIndex >= 0) {
+          index = nextIndex - 1;
+        }
+      }
+    }
+
+    await saveArtifactRecord({
+      artifactId: randomUUID(),
+      sessionId: session.sessionId,
+      runId,
+      type: "report",
+      label: `Workflow output: ${params.workflow.name}`,
+      contentText: JSON.stringify({ variables, stepOutputs }, null, 2),
+      metadata: { workflowId: params.workflow.id },
+    });
+    await updateRunRecord(runId, {
+      status: "completed",
+      phase: "complete",
+      attempt: 0,
+    });
+
+    return { runId, sessionId: session.sessionId, variables, stepOutputs };
+  } catch (error) {
+    await updateRunRecord(runId, {
+      status: "failed",
+      phase: "complete",
+      error: error instanceof Error ? error.message : String(error),
+      attempt: 0,
+    });
+    throw error;
+  }
 }

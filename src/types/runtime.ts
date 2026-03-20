@@ -24,6 +24,7 @@ export type SessionRecord = {
   sessionId: string;
   title: string;
   agentId?: string;
+  projectContextId?: string;
   model: string;
   systemPrompt: string;
   workspaceId?: string;

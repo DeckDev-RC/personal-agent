@@ -28,6 +28,7 @@ export type AgentConfig = {
   model: string;
   skillIds: string[];
   mcpServerIds: string[];
+  projectContextId?: string;
   defaultWorkspaceId?: string;
   memoryPolicy?: AgentMemoryPolicy;
   toolPolicy?: AgentToolPolicy;

@@ -17,6 +17,7 @@ export type Conversation = {
   id: string;
   title: string;
   agentId?: string;
+  projectContextId?: string;
   model: string;
   systemPrompt: string;
   workspaceId?: string;
@@ -34,6 +35,7 @@ export type ConversationSummary = {
   id: string;
   title: string;
   agentId?: string;
+  projectContextId?: string;
   model: string;
   messageCount: number;
   createdAt: number;
@@ -63,7 +65,7 @@ type ChatState = {
   collapsedInspectorSections: string[];
 
   loadConversations: () => Promise<void>;
-  createConversation: (model: string, systemPrompt: string, agentId?: string) => Conversation;
+  createConversation: (model: string, systemPrompt: string, agentId?: string, projectContextId?: string) => Conversation;
   selectConversation: (id: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
@@ -97,6 +99,7 @@ function toSummary(item: any): ConversationSummary {
     id: item.sessionId ?? item.id,
     title: item.title,
     agentId: item.agentId,
+    projectContextId: item.projectContextId,
     model: item.model,
     messageCount: item.messageCount ?? 0,
     createdAt: item.createdAt,
@@ -123,6 +126,7 @@ function toConversation(payload: any): Conversation {
     id: session.sessionId ?? session.id,
     title: session.title,
     agentId: session.agentId,
+    projectContextId: session.projectContextId,
     model: session.model,
     systemPrompt: session.systemPrompt,
     workspaceId: session.workspaceId,
@@ -165,11 +169,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ conversations: (list ?? []).map(toSummary) });
   },
 
-  createConversation: (model, systemPrompt, agentId) => {
+  createConversation: (model, systemPrompt, agentId, projectContextId) => {
     const conversation: Conversation = {
       id: `draft-${generateId()}`,
       title: "New session",
       agentId,
+      projectContextId,
       model,
       systemPrompt,
       messages: [],

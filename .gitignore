@@ -1,7 +1,11 @@
 node_modules/
 dist-desktop/
 ui-dist/
-data/
+data/*
+!data/skills/
+!data/skills/**
+!data/workflows/
+!data/workflows/**
 temp-electron-app/
 coverage/
 *.log

@@ -7,8 +7,10 @@ import {
   type CanonicalProviderName,
 } from "../../src/types/model.js";
 import type { McpServerConfig } from "../../src/types/mcp.js";
+import type { ProjectContext } from "../../src/types/projectContext.js";
 import type { Skill } from "../../src/types/skill.js";
 import type { Workflow } from "../../src/types/workflow.js";
+import { loadDefaultCoworkSkills, loadDefaultCoworkWorkflows } from "./coworkDefaults.js";
 import { ensureV2Db } from "./v2Db.js";
 
 export type V2AppSettings = {
@@ -106,7 +108,85 @@ function normalizeSettings(settings?: Partial<V2AppSettings> | null): V2AppSetti
   };
 }
 
-async function listEntities<T>(kind: "agents" | "skills" | "workflows" | "mcp_servers"): Promise<T[]> {
+let skillSeedPromise: Promise<void> | null = null;
+let coworkSkillsSeeded = false;
+let workflowSeedPromise: Promise<void> | null = null;
+let coworkWorkflowsSeeded = false;
+
+async function seedDefaultEntities<T extends { id: string; updatedAt?: number }>(params: {
+  kind: "skills" | "workflows";
+  defaults: T[];
+}): Promise<void> {
+  const db = await ensureV2Db();
+  const existingRows = db
+    .prepare("SELECT id FROM entities WHERE kind = ?")
+    .all(params.kind) as Array<Record<string, unknown>>;
+  const existingIds = new Set(existingRows.map((row) => String(row.id)));
+  const insert = db.prepare(
+    `
+      INSERT OR REPLACE INTO entities (kind, id, payload_json, updated_at)
+      VALUES (?1, ?2, ?3, ?4)
+    `,
+  );
+
+  for (const item of params.defaults) {
+    if (existingIds.has(item.id)) {
+      continue;
+    }
+
+    insert.run(params.kind, item.id, JSON.stringify(item), Number(item.updatedAt ?? Date.now()));
+  }
+}
+
+async function ensureDefaultCoworkSkillsSeeded(): Promise<void> {
+  if (coworkSkillsSeeded) {
+    return;
+  }
+
+  if (skillSeedPromise) {
+    await skillSeedPromise;
+    return;
+  }
+
+  skillSeedPromise = (async () => {
+    const defaults = await loadDefaultCoworkSkills();
+    await seedDefaultEntities({ kind: "skills", defaults });
+    coworkSkillsSeeded = true;
+  })();
+
+  try {
+    await skillSeedPromise;
+  } finally {
+    skillSeedPromise = null;
+  }
+}
+
+async function ensureDefaultCoworkWorkflowsSeeded(): Promise<void> {
+  if (coworkWorkflowsSeeded) {
+    return;
+  }
+
+  if (workflowSeedPromise) {
+    await workflowSeedPromise;
+    return;
+  }
+
+  workflowSeedPromise = (async () => {
+    const defaults = await loadDefaultCoworkWorkflows();
+    await seedDefaultEntities({ kind: "workflows", defaults });
+    coworkWorkflowsSeeded = true;
+  })();
+
+  try {
+    await workflowSeedPromise;
+  } finally {
+    workflowSeedPromise = null;
+  }
+}
+
+type EntityKind = "agents" | "skills" | "workflows" | "mcp_servers" | "project_contexts";
+
+async function listEntities<T>(kind: EntityKind): Promise<T[]> {
   const db = await ensureV2Db();
   const rows = db
     .prepare("SELECT payload_json FROM entities WHERE kind = ? ORDER BY updated_at DESC")
@@ -114,10 +194,7 @@ async function listEntities<T>(kind: "agents" | "skills" | "workflows" | "mcp_se
   return rows.map((row) => parseJson<T>(row.payload_json, {} as T));
 }
 
-async function getEntity<T>(
-  kind: "agents" | "skills" | "workflows" | "mcp_servers",
-  id: string,
-): Promise<T | null> {
+async function getEntity<T>(kind: EntityKind, id: string): Promise<T | null> {
   const db = await ensureV2Db();
   const row = db
     .prepare("SELECT payload_json FROM entities WHERE kind = ? AND id = ?")
@@ -125,10 +202,7 @@ async function getEntity<T>(
   return row ? parseJson<T>(row.payload_json, {} as T) : null;
 }
 
-async function saveEntity<T extends { id: string; updatedAt?: number }>(
-  kind: "agents" | "skills" | "workflows" | "mcp_servers",
-  item: T,
-): Promise<void> {
+async function saveEntity<T extends { id: string; updatedAt?: number }>(kind: EntityKind, item: T): Promise<void> {
   const db = await ensureV2Db();
   db.prepare(
     `
@@ -139,7 +213,7 @@ async function saveEntity<T extends { id: string; updatedAt?: number }>(
 }
 
 async function deleteEntity(
-  kind: "agents" | "skills" | "workflows" | "mcp_servers",
+  kind: EntityKind,
   id: string,
 ): Promise<void> {
   const db = await ensureV2Db();
@@ -163,10 +237,12 @@ export async function deleteAgentV2(id: string): Promise<void> {
 }
 
 export async function listSkillsV2(): Promise<Skill[]> {
+  await ensureDefaultCoworkSkillsSeeded();
   return await listEntities<Skill>("skills");
 }
 
 export async function getSkillV2(id: string): Promise<Skill | null> {
+  await ensureDefaultCoworkSkillsSeeded();
   return await getEntity<Skill>("skills", id);
 }
 
@@ -179,10 +255,12 @@ export async function deleteSkillV2(id: string): Promise<void> {
 }
 
 export async function listWorkflowsV2(): Promise<Workflow[]> {
+  await ensureDefaultCoworkWorkflowsSeeded();
   return await listEntities<Workflow>("workflows");
 }
 
 export async function getWorkflowV2(id: string): Promise<Workflow | null> {
+  await ensureDefaultCoworkWorkflowsSeeded();
   return await getEntity<Workflow>("workflows", id);
 }
 
@@ -208,6 +286,22 @@ export async function saveMcpServerV2(server: McpServerConfig): Promise<void> {
 
 export async function deleteMcpServerV2(id: string): Promise<void> {
   await deleteEntity("mcp_servers", id);
+}
+
+export async function listProjectContextsV2(): Promise<ProjectContext[]> {
+  return await listEntities<ProjectContext>("project_contexts");
+}
+
+export async function getProjectContextV2(id: string): Promise<ProjectContext | null> {
+  return await getEntity<ProjectContext>("project_contexts", id);
+}
+
+export async function saveProjectContextV2(projectContext: ProjectContext): Promise<void> {
+  await saveEntity("project_contexts", projectContext);
+}
+
+export async function deleteProjectContextV2(id: string): Promise<void> {
+  await deleteEntity("project_contexts", id);
 }
 
 export async function getSettingsV2(): Promise<V2AppSettings> {

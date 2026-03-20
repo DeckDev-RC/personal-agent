@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  LayoutDashboard,
   MessageSquare,
+  FolderTree,
   Bot,
   Zap,
   GitBranch,
@@ -61,10 +63,22 @@ export default function CommandPalette({
   const commands: Command[] = useMemo(
     () => [
       {
+        id: "today",
+        label: t("commandPalette.openToday"),
+        icon: LayoutDashboard,
+        action: () => { onNavigate("today"); onClose(); },
+      },
+      {
         id: "new-chat",
         label: t("commandPalette.newChat"),
         icon: MessageSquare,
         action: () => { onNewChat(); onClose(); },
+      },
+      {
+        id: "workspace",
+        label: t("commandPalette.openWorkspace"),
+        icon: FolderTree,
+        action: () => { onNavigate("workspace"); onClose(); },
       },
       {
         id: "agents",

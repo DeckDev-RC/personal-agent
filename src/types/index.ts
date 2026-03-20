@@ -7,7 +7,15 @@ export type {
 } from "./agent.js";
 export type { Skill } from "./skill.js";
 export type { WorkflowSchedule, WorkflowStep, Workflow } from "./workflow.js";
-export type { McpServerConfig, McpTool, McpServerStatus } from "./mcp.js";
+export type { McpCatalogEntry, McpCatalogField, McpServerConfig, McpTool, McpServerStatus } from "./mcp.js";
+export type { ProjectContext } from "./projectContext.js";
+export type {
+  ReminderRecord,
+  ReminderRecurrence,
+  ReminderSource,
+  ReminderStatus,
+} from "./reminder.js";
+export type { TaskPriority, TaskRecord, TaskStatus } from "./task.js";
 export type {
   ArtifactRecord,
   AttachmentRecord,

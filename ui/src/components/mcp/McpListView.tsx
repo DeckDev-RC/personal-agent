@@ -5,11 +5,23 @@ import { useMcpStore, type McpServerConfig, type McpServerStatus } from "../../s
 import Button from "../shared/Button";
 import Badge from "../shared/Badge";
 import McpEditor from "./McpEditor";
+import McpMarketplace from "./McpMarketplace";
 import McpToolBrowser from "./McpToolBrowser";
 
 export default function McpListView() {
   const { t } = useTranslation();
-  const { servers, statuses, loaded, loadServers, deleteServer, connectServer, disconnectServer, updateServer } =
+  const {
+    servers,
+    statuses,
+    loaded,
+    catalogLoaded,
+    loadServers,
+    loadCatalog,
+    deleteServer,
+    connectServer,
+    disconnectServer,
+    updateServer,
+  } =
     useMcpStore();
   const [editing, setEditing] = useState<McpServerConfig | null>(null);
   const [creating, setCreating] = useState(false);
@@ -19,6 +31,10 @@ export default function McpListView() {
   useEffect(() => {
     if (!loaded) loadServers();
   }, [loaded, loadServers]);
+
+  useEffect(() => {
+    if (!catalogLoaded) loadCatalog();
+  }, [catalogLoaded, loadCatalog]);
 
   function getStatus(id: string): McpServerStatus | undefined {
     return statuses.find((s) => s.id === id);
@@ -55,7 +71,7 @@ export default function McpListView() {
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-6">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-lg font-semibold text-text-primary">{t("mcp.title")}</h1>
           <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
@@ -64,12 +80,21 @@ export default function McpListView() {
           </Button>
         </div>
 
-        {servers.length === 0 ? (
-          <div className="text-center py-12 text-text-secondary text-sm">
-            {t("mcp.noServers")}
-          </div>
-        ) : (
-          <div className="grid gap-3">
+        <div className="grid gap-6">
+          <McpMarketplace statuses={statuses} />
+
+          {servers.length === 0 ? (
+            <div className="text-center py-12 text-text-secondary text-sm rounded-2xl border border-border bg-bg-secondary/60">
+              {t("mcp.noServers")}
+            </div>
+          ) : (
+            <section>
+              <div className="mb-3">
+                <h2 className="text-sm font-medium text-text-primary">{t("mcp.configuredTitle")}</h2>
+                <p className="mt-1 text-xs text-text-secondary/70">{t("mcp.configuredDescription")}</p>
+              </div>
+
+              <div className="grid gap-3">
             {servers.map((server) => {
               const status = getStatus(server.id);
               const isConnected = status?.connected ?? false;
@@ -194,8 +219,10 @@ export default function McpListView() {
                 </div>
               );
             })}
-          </div>
-        )}
+              </div>
+            </section>
+          )}
+        </div>
       </div>
     </div>
   );

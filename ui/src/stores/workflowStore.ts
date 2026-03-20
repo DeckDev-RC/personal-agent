@@ -209,11 +209,37 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
         return state;
       }
 
+      const stepOutputs =
+        payload.stepOutputs && typeof payload.stepOutputs === "object"
+          ? (payload.stepOutputs as Record<string, { status?: string; output?: string }>)
+          : {};
+      const nextSteps =
+        Object.keys(stepOutputs).length > 0
+          ? state.runState.steps.map((step) => {
+              const output = stepOutputs[step.stepId];
+              if (!output) {
+                return step;
+              }
+              return {
+                ...step,
+                status:
+                  output.status === "running" ||
+                  output.status === "success" ||
+                  output.status === "error" ||
+                  output.status === "skipped"
+                    ? output.status
+                    : step.status,
+                output: typeof output.output === "string" ? output.output : step.output,
+              };
+            })
+          : state.runState.steps;
+
       return {
         runState: {
           ...state.runState,
           running: false,
           variables: payload.variables ?? state.runState.variables,
+          steps: nextSteps,
           finishedAt: Date.now(),
         },
       };

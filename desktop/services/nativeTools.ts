@@ -3,9 +3,13 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import type { Tool } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
+import type { ReminderRecurrence } from "../../src/types/reminder.js";
 import { applySimplePatch } from "./simplePatch.js";
 import type { ToolMetadata } from "../../src/types/runtime.js";
+import { createReminder, listReminders } from "./reminderScheduler.js";
 import { runWebSearch } from "./webSearchProvider.js";
+import { completeTask, createTask, deleteTask, listTasks, updateTask } from "./taskManager.js";
+import { getSessionRecord } from "./v2SessionStore.js";
 
 export type NativeToolName =
   | "list_dir"
@@ -17,7 +21,10 @@ export type NativeToolName =
   | "apply_patch"
   | "diff_status"
   | "diff_file"
-  | "web_search";
+  | "web_search"
+  | "manage_tasks"
+  | "set_reminder"
+  | "list_reminders";
 
 export type ToolRiskDecision =
   | { mode: "allow"; reason: string }
@@ -26,6 +33,7 @@ export type ToolRiskDecision =
 
 export type NativeToolContext = {
   workspaceRoot: string;
+  sessionId?: string;
   signal?: AbortSignal;
 };
 
@@ -44,6 +52,24 @@ const IGNORED_DIRS = new Set(["node_modules", ".git", "dist", "build", ".next", 
 const SAFE_COMMANDS = new Set(["git", "pwd", "ls", "dir", "Get-Location", "Get-ChildItem", "type", "cat"]);
 const MUTATING_COMMAND_HINTS = /\b(npm install|pnpm install|yarn add|git reset|git checkout|rm |del |move |copy |mkdir |rmdir )\b/i;
 const SHELL_CHAINING = /[;&|><]/;
+
+function formatTaskSummary(task: {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  dueDate?: string;
+  projectContextId?: string;
+}): string {
+  const meta = [task.status, task.priority];
+  if (task.dueDate) {
+    meta.push(`due ${task.dueDate}`);
+  }
+  if (task.projectContextId) {
+    meta.push(`context ${task.projectContextId}`);
+  }
+  return `- ${task.title} (${meta.join(", ")}) [${task.id}]`;
+}
 
 function ensureInsideWorkspace(workspaceRoot: string, candidatePath: string): string {
   const resolvedRoot = path.resolve(workspaceRoot);
@@ -208,6 +234,17 @@ export function classifyNativeToolRisk(
 
   if (toolName === "web_search") {
     return { mode: "allow", reason: "Read-only external search." };
+  }
+
+  if (toolName === "manage_tasks") {
+    if (String(args.action ?? "list") === "delete") {
+      return { mode: "approval", reason: "Deleting tasks requires confirmation.", riskLevel: "medium" };
+    }
+    return { mode: "allow", reason: "Local task management is allowed." };
+  }
+
+  if (toolName === "set_reminder" || toolName === "list_reminders") {
+    return { mode: "allow", reason: "Local reminders are allowed." };
   }
 
   if (toolName === "write_file" || toolName === "edit_file" || toolName === "apply_patch") {
@@ -376,6 +413,97 @@ export function buildNativeTools(): NativeToolDefinition[] {
         { additionalProperties: false },
       ),
     },
+    {
+      name: "manage_tasks",
+      description: "Create, update, complete, delete, or list local cowork tasks.",
+      metadata: {
+        capabilities: ["mutating"],
+        defaultTimeoutMs: 5_000,
+      },
+      parameters: Type.Object(
+        {
+          action: Type.Union([
+            Type.Literal("list"),
+            Type.Literal("create"),
+            Type.Literal("update"),
+            Type.Literal("complete"),
+            Type.Literal("delete"),
+          ]),
+          taskId: Type.Optional(Type.String()),
+          title: Type.Optional(Type.String()),
+          description: Type.Optional(Type.String()),
+          status: Type.Optional(
+            Type.Union([
+              Type.Literal("backlog"),
+              Type.Literal("today"),
+              Type.Literal("in_progress"),
+              Type.Literal("done"),
+            ]),
+          ),
+          priority: Type.Optional(
+            Type.Union([
+              Type.Literal("low"),
+              Type.Literal("medium"),
+              Type.Literal("high"),
+            ]),
+          ),
+          dueDate: Type.Optional(Type.String({ description: "Date in YYYY-MM-DD format." })),
+          projectContextId: Type.Optional(Type.String()),
+          includeDone: Type.Optional(Type.Boolean()),
+        },
+        { additionalProperties: false },
+      ),
+    },
+    {
+      name: "set_reminder",
+      description: "Create a local reminder that triggers a desktop notification later.",
+      metadata: {
+        capabilities: ["mutating"],
+        defaultTimeoutMs: 5_000,
+      },
+      parameters: Type.Object(
+        {
+          message: Type.String(),
+          triggerAt: Type.String({
+            description: "Reminder time as ISO datetime or another parseable local datetime string.",
+          }),
+          recurring: Type.Optional(
+            Type.Union([
+              Type.Literal("none"),
+              Type.Literal("daily"),
+              Type.Literal("weekly"),
+              Type.Literal("weekdays"),
+            ]),
+          ),
+          projectContextId: Type.Optional(Type.String()),
+        },
+        { additionalProperties: false },
+      ),
+    },
+    {
+      name: "list_reminders",
+      description: "List local reminders that have been scheduled in the app.",
+      metadata: {
+        capabilities: ["read_only"],
+        defaultTimeoutMs: 5_000,
+      },
+      parameters: Type.Object(
+        {
+          status: Type.Optional(
+            Type.Union([
+              Type.Literal("pending"),
+              Type.Literal("delivered"),
+              Type.Literal("acknowledged"),
+              Type.Literal("canceled"),
+            ]),
+          ),
+          includeCanceled: Type.Optional(Type.Boolean()),
+          includeAcknowledged: Type.Optional(Type.Boolean()),
+          limit: Type.Optional(Type.Number()),
+        },
+        { additionalProperties: false },
+      ),
+    },
   ] satisfies NativeToolDefinition[];
 }
 
@@ -451,6 +579,137 @@ export async function executeNativeTool(
         metadata: {
           webSearchResults: results,
         },
+      };
+    }
+    case "manage_tasks": {
+      const action = String(args.action ?? "list");
+      const session = ctx.sessionId ? await getSessionRecord(ctx.sessionId) : null;
+      const explicitProjectContextId =
+        typeof args.projectContextId === "string"
+          ? String(args.projectContextId).trim() || undefined
+          : undefined;
+      const contextualProjectContextId = explicitProjectContextId ?? session?.projectContextId;
+
+      if (action === "list") {
+        const tasks = await listTasks({
+          status: typeof args.status === "string" ? (args.status as any) : undefined,
+          projectContextId: contextualProjectContextId,
+          includeDone: Boolean(args.includeDone),
+        });
+        return {
+          content:
+            tasks.length > 0
+              ? `${tasks.length} task(s):\n${tasks.map((task) => formatTaskSummary(task)).join("\n")}`
+              : "No tasks found.",
+          metadata: { tasks },
+        };
+      }
+
+      if (action === "create") {
+        const task = await createTask({
+          title: String(args.title ?? "").trim(),
+          description: String(args.description ?? ""),
+          status: typeof args.status === "string" ? (args.status as any) : "backlog",
+          priority: typeof args.priority === "string" ? (args.priority as any) : "medium",
+          dueDate: typeof args.dueDate === "string" ? args.dueDate : undefined,
+          projectContextId: contextualProjectContextId,
+          source: "agent",
+        });
+        return {
+          content: `Created task:\n${formatTaskSummary(task)}`,
+          metadata: { task },
+        };
+      }
+
+      const taskId = String(args.taskId ?? "").trim();
+      if (!taskId) {
+        throw new Error("taskId is required for this action.");
+      }
+
+      if (action === "update") {
+        const task = await updateTask(taskId, {
+          title: typeof args.title === "string" ? args.title : undefined,
+          description: typeof args.description === "string" ? args.description : undefined,
+          status: typeof args.status === "string" ? (args.status as any) : undefined,
+          priority: typeof args.priority === "string" ? (args.priority as any) : undefined,
+          dueDate: typeof args.dueDate === "string" ? args.dueDate : undefined,
+          ...(Object.prototype.hasOwnProperty.call(args, "projectContextId")
+            ? { projectContextId: explicitProjectContextId }
+            : {}),
+          source: "agent",
+        });
+        if (!task) {
+          throw new Error(`Task not found: ${taskId}`);
+        }
+        return {
+          content: `Updated task:\n${formatTaskSummary(task)}`,
+          metadata: { task },
+        };
+      }
+
+      if (action === "complete") {
+        const task = await completeTask(taskId);
+        if (!task) {
+          throw new Error(`Task not found: ${taskId}`);
+        }
+        return {
+          content: `Completed task:\n${formatTaskSummary(task)}`,
+          metadata: { task },
+        };
+      }
+
+      if (action === "delete") {
+        const deleted = await deleteTask(taskId);
+        if (!deleted) {
+          throw new Error(`Task not found: ${taskId}`);
+        }
+        return {
+          content: `Deleted task ${taskId}.`,
+          metadata: { taskId },
+        };
+      }
+
+      throw new Error(`Unsupported task action: ${action}`);
+    }
+    case "set_reminder": {
+      const session = ctx.sessionId ? await getSessionRecord(ctx.sessionId) : null;
+      const reminder = await createReminder({
+        message: String(args.message ?? "").trim(),
+        triggerAt: String(args.triggerAt ?? ""),
+        recurring:
+          typeof args.recurring === "string"
+            ? (args.recurring as ReminderRecurrence)
+            : "none",
+        projectContextId:
+          typeof args.projectContextId === "string"
+            ? String(args.projectContextId).trim() || undefined
+            : session?.projectContextId,
+        sessionId: session?.sessionId,
+        source: "agent",
+      });
+      return {
+        content: `Reminder set for ${new Date(reminder.triggerAt).toLocaleString()}: ${reminder.message}`,
+        metadata: { reminder },
+      };
+    }
+    case "list_reminders": {
+      const reminders = await listReminders({
+        status: typeof args.status === "string" ? (args.status as any) : undefined,
+        includeCanceled: Boolean(args.includeCanceled),
+        includeAcknowledged: Boolean(args.includeAcknowledged),
+        limit: typeof args.limit === "number" ? args.limit : undefined,
+      });
+      return {
+        content:
+          reminders.length > 0
+            ? `${reminders.length} reminder(s):\n${reminders
+                .map(
+                  (reminder) =>
+                    `- ${new Date(reminder.triggerAt).toLocaleString()} [${reminder.status}] ${reminder.message} [${reminder.id}]`,
+                )
+                .join("\n")}`
+            : "No reminders found.",
+        metadata: { reminders },
       };
     }
   }

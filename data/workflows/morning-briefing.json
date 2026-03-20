@@ -1,0 +1,35 @@
+{
+  "id": "cowork-morning-briefing",
+  "name": "Morning Briefing",
+  "description": "Generate a start-of-day briefing using tasks, memory, and any connected work tools.",
+  "steps": [
+    {
+      "id": "task_snapshot",
+      "type": "tool-call",
+      "toolName": "manage_tasks",
+      "toolArgs": {
+        "action": "list"
+      }
+    },
+    {
+      "id": "recent_memory",
+      "type": "memory-query",
+      "memoryQuery": "priority blocker meeting follow-up deploy customer",
+      "memoryLimit": 6
+    },
+    {
+      "id": "draft_briefing",
+      "type": "agent-chat",
+      "prompt": "Create a concise morning briefing for today. Use connected calendar, email, docs, and other cowork tools if they are available. If any expected source is missing, say so explicitly and continue with the local data below.\n\nOpen tasks:\n{{step.task_snapshot.output}}\n\nRecent memory:\n{{step.recent_memory.output}}\n\nReturn sections: Today's agenda, Top priorities, Risks or blockers, Suggested first actions."
+    }
+  ],
+  "variables": {},
+  "schedule": {
+    "enabled": false,
+    "intervalMinutes": 1440,
+    "retryOnFailure": true,
+    "maxRetries": 2
+  },
+  "createdAt": 0,
+  "updatedAt": 0
+}

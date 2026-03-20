@@ -8,6 +8,7 @@ export type AgentConfig = {
   model: string;
   skillIds: string[];
   mcpServerIds: string[];
+  projectContextId?: string;
   defaultWorkspaceId?: string;
   memoryPolicy?: {
     enabled: boolean;
@@ -109,6 +110,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       model: partial.model ?? "openai-codex/gpt-5.4",
       skillIds: partial.skillIds ?? [],
       mcpServerIds: partial.mcpServerIds ?? [],
+      projectContextId: partial.projectContextId,
       defaultWorkspaceId: partial.defaultWorkspaceId,
       memoryPolicy: partial.memoryPolicy ?? DEFAULT_AGENT.memoryPolicy,
       toolPolicy: partial.toolPolicy ?? DEFAULT_AGENT.toolPolicy,

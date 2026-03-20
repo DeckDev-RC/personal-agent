@@ -1,8 +1,13 @@
 import React, { useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  BellRing,
+  LayoutDashboard,
   MessageSquare,
+  FolderTree,
   Bot,
+  FolderOpen,
+  ListTodo,
   Zap,
   GitBranch,
   Plug,
@@ -13,10 +18,16 @@ import {
   BarChart3,
   ScrollText,
 } from "lucide-react";
+import QuickActions from "../skills/QuickActions";
 
 export type NavView =
+  | "today"
   | "chat"
+  | "notifications"
+  | "workspace"
   | "agents"
+  | "contexts"
+  | "tasks"
   | "skills"
   | "workflows"
   | "mcp"
@@ -34,11 +45,16 @@ type SidebarProps = {
 type NavItem = { view: NavView; icon: React.ElementType; labelKey: string };
 
 const chatItems: NavItem[] = [
+  { view: "today", icon: LayoutDashboard, labelKey: "nav.today" },
   { view: "chat", icon: MessageSquare, labelKey: "nav.chat" },
+  { view: "notifications", icon: BellRing, labelKey: "nav.notifications" },
 ];
 
 const managementItems: NavItem[] = [
+  { view: "workspace", icon: FolderTree, labelKey: "nav.workspace" },
   { view: "agents", icon: Bot, labelKey: "nav.agents" },
+  { view: "contexts", icon: FolderOpen, labelKey: "nav.contexts" },
+  { view: "tasks", icon: ListTodo, labelKey: "nav.tasks" },
   { view: "skills", icon: Zap, labelKey: "nav.skills" },
   { view: "workflows", icon: GitBranch, labelKey: "nav.workflows" },
   { view: "mcp", icon: Plug, labelKey: "nav.mcp" },
@@ -156,6 +172,14 @@ export default function Sidebar({ open, onToggle, activeView, onNavigate }: Side
         {/* Chat section */}
         <SectionLabel label="Chat" visible={showLabels} />
         {chatItems.map(renderNavButton)}
+
+        {showLabels && (
+          <QuickActions
+            onAction={() => {
+              if (!isDesktop && open) onToggle();
+            }}
+          />
+        )}
 
         {/* Management section */}
         <SectionLabel label="Management" visible={showLabels} />

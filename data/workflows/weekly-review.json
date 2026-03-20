@@ -1,0 +1,36 @@
+{
+  "id": "cowork-weekly-review",
+  "name": "Weekly Review",
+  "description": "Build a structured weekly review with progress, risks, and recommended adjustments.",
+  "steps": [
+    {
+      "id": "task_snapshot",
+      "type": "tool-call",
+      "toolName": "manage_tasks",
+      "toolArgs": {
+        "action": "list",
+        "includeDone": "true"
+      }
+    },
+    {
+      "id": "weekly_memory",
+      "type": "memory-query",
+      "memoryQuery": "week progress decision blocker risk follow-up customer delivery",
+      "memoryLimit": 10
+    },
+    {
+      "id": "draft_review",
+      "type": "agent-chat",
+      "prompt": "Create a weekly review for the current workstream. Use connected task, email, calendar, and docs tools if they are available. If not, clearly note the gaps and keep going with the local context below.\n\nTask snapshot:\n{{step.task_snapshot.output}}\n\nWeekly memory:\n{{step.weekly_memory.output}}\n\nReturn sections: Progress summary, Completed work, Risks and blockers, Key decisions, Recommendations for next week."
+    }
+  ],
+  "variables": {},
+  "schedule": {
+    "enabled": false,
+    "intervalMinutes": 10080,
+    "retryOnFailure": true,
+    "maxRetries": 2
+  },
+  "createdAt": 0,
+  "updatedAt": 0
+}

@@ -38,6 +38,7 @@ function rowToSession(row: Record<string, unknown>): SessionRecord {
     sessionId: String(row.session_id),
     title: String(row.title ?? "Nova sessao"),
     agentId: typeof row.agent_id === "string" ? row.agent_id : undefined,
+    projectContextId: typeof row.project_context_id === "string" ? row.project_context_id : undefined,
     model: normalizeModelRef(String(row.model ?? "openai-codex/gpt-5.4")),
     systemPrompt: String(row.system_prompt ?? ""),
     workspaceId: typeof row.workspace_id === "string" ? row.workspace_id : undefined,
@@ -316,6 +317,7 @@ export async function createSessionRecord(params: {
   model: string;
   systemPrompt: string;
   agentId?: string;
+  projectContextId?: string;
   sessionId?: string;
 }): Promise<SessionRecord> {
   const db = await ensureV2Db();
@@ -324,6 +326,7 @@ export async function createSessionRecord(params: {
     sessionId: params.sessionId ?? randomUUID(),
     title: params.title?.trim() || "Nova sessao",
     agentId: params.agentId,
+    projectContextId: params.projectContextId?.trim() || undefined,
     model: normalizeModelRef(params.model),
     systemPrompt: params.systemPrompt,
     workspaceId: randomUUID(),
@@ -336,14 +339,15 @@ export async function createSessionRecord(params: {
   db.prepare(
     `
       INSERT OR REPLACE INTO sessions (
-        session_id, title, agent_id, model, system_prompt, workspace_id, workspace_root,
+        session_id, title, agent_id, project_context_id, model, system_prompt, workspace_id, workspace_root,
         created_at, updated_at, message_count, last_run_id, last_run_status, last_run_phase
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 0, NULL, NULL, NULL)
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, NULL, NULL, NULL)
     `,
   ).run(
     session.sessionId,
     session.title,
     session.agentId ?? null,
+    session.projectContextId ?? null,
     session.model,
     session.systemPrompt,
     session.workspaceId ?? randomUUID(),
@@ -378,7 +382,16 @@ export async function patchSessionRecord(
   patch: Partial<
     Pick<
       SessionRecord,
-      "title" | "agentId" | "model" | "systemPrompt" | "workspaceId" | "workspaceRoot" | "lastRunId" | "lastRunStatus" | "lastRunPhase"
+      | "title"
+      | "agentId"
+      | "projectContextId"
+      | "model"
+      | "systemPrompt"
+      | "workspaceId"
+      | "workspaceRoot"
+      | "lastRunId"
+      | "lastRunStatus"
+      | "lastRunPhase"
     >
   >,
 ): Promise<SessionRecord | null> {
@@ -389,6 +402,10 @@ export async function patchSessionRecord(
   const next: SessionRecord = {
     ...current,
     ...patch,
+    projectContextId:
+      typeof patch.projectContextId === "string"
+        ? patch.projectContextId.trim() || undefined
+        : current.projectContextId,
     model: patch.model ? normalizeModelRef(patch.model) : current.model,
     updatedAt: Date.now(),
   };
@@ -398,20 +415,22 @@ export async function patchSessionRecord(
       UPDATE sessions
       SET title = ?2,
           agent_id = ?3,
-          model = ?4,
-          system_prompt = ?5,
-          workspace_id = ?6,
-          workspace_root = ?7,
-          updated_at = ?8,
-          last_run_id = ?9,
-          last_run_status = ?10,
-          last_run_phase = ?11
+          project_context_id = ?4,
+          model = ?5,
+          system_prompt = ?6,
+          workspace_id = ?7,
+          workspace_root = ?8,
+          updated_at = ?9,
+          last_run_id = ?10,
+          last_run_status = ?11,
+          last_run_phase = ?12
       WHERE session_id = ?1
     `,
   ).run(
     sessionId,
     next.title,
     next.agentId ?? null,
+    next.projectContextId ?? null,
     next.model,
     next.systemPrompt,
     next.workspaceId ?? null,

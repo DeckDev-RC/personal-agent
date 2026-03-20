@@ -3,10 +3,15 @@ import { useTranslation } from "react-i18next";
 import { Minus, X } from "lucide-react";
 import Sidebar, { type NavView } from "./Sidebar";
 import CommandPalette from "./CommandPalette";
+import DayView from "../dashboard/DayView";
 import ChatView from "../chat/ChatView";
+import NotificationCenter from "../notifications/NotificationCenter";
 import AgentListView from "../agents/AgentListView";
+import ContextListView from "../context/ContextListView";
+import TasksView from "../tasks/TasksView";
 import SkillListView from "../skills/SkillListView";
 import McpListView from "../mcp/McpListView";
+import WorkspaceExplorer from "../workspace/WorkspaceExplorer";
 import WorkflowListView from "../workflows/WorkflowListView";
 import SettingsView from "../settings/SettingsView";
 import UsageView from "../analytics/UsageView";
@@ -15,7 +20,8 @@ import StatusBar from "./StatusBar";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useChatStore } from "../../stores/chatStore";
 import { useAuthStore } from "../../stores/authStore";
-import { useHashRouter, setRoute } from "../../router";
+import { useContextStore } from "../../stores/contextStore";
+import { useHashRouter } from "../../router";
 
 export default function Shell() {
   const { t, i18n } = useTranslation();
@@ -69,7 +75,7 @@ export default function Shell() {
   const handleNewChat = useCallback(() => {
     setActiveView("chat");
     const store = useChatStore.getState();
-    store.createConversation(settings.defaultModelRef, "");
+    store.createConversation(settings.defaultModelRef, "", undefined, useContextStore.getState().activeContextId || undefined);
   }, [settings.defaultModelRef]);
 
   const handleSwitchLanguage = useCallback(() => {
@@ -81,12 +87,22 @@ export default function Shell() {
 
   function renderView() {
     switch (activeView) {
+      case "today":
+        return <DayView />;
       case "chat":
-        return <ChatView />;
+        return <ChatView sessionId={routeParam} />;
+      case "notifications":
+        return <NotificationCenter />;
       case "settings":
         return <SettingsView />;
+      case "workspace":
+        return <WorkspaceExplorer initialSelectedPath={routeParam ? decodeURIComponent(routeParam) : undefined} />;
       case "agents":
         return <AgentListView />;
+      case "contexts":
+        return <ContextListView />;
+      case "tasks":
+        return <TasksView />;
       case "skills":
         return <SkillListView />;
       case "workflows":

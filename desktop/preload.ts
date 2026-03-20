@@ -8,6 +8,7 @@ type StreamChatArgs = {
   sessionId?: string;
   title?: string;
   agentId?: string;
+  projectContextId?: string;
   model?: string;
   modelRef?: string;
   systemPrompt: string;
@@ -109,6 +110,12 @@ contextBridge.exposeInMainWorld("codexAgent", {
     saveWorkflow: (workflow: any) => ipcRenderer.invoke("store:workflows:save", workflow),
     deleteWorkflow: (id: string) => ipcRenderer.invoke("store:workflows:delete", id),
 
+    // Project contexts
+    listContexts: () => ipcRenderer.invoke("store:contexts:list"),
+    getContext: (id: string) => ipcRenderer.invoke("store:contexts:get", id),
+    saveContext: (projectContext: any) => ipcRenderer.invoke("store:contexts:save", projectContext),
+    deleteContext: (id: string) => ipcRenderer.invoke("store:contexts:delete", id),
+
     // MCP Servers
     listMcpServers: () => ipcRenderer.invoke("store:mcp:list"),
     getMcpServer: (id: string) => ipcRenderer.invoke("store:mcp:get", id),
@@ -126,6 +133,7 @@ contextBridge.exposeInMainWorld("codexAgent", {
     disconnect: (id: string) => ipcRenderer.invoke("mcp:disconnect", id),
     status: (id: string) => ipcRenderer.invoke("mcp:status", id),
     statuses: () => ipcRenderer.invoke("mcp:statuses"),
+    catalog: () => ipcRenderer.invoke("mcp:catalog"),
     tools: (id: string) => ipcRenderer.invoke("mcp:tools", id),
     allTools: () => ipcRenderer.invoke("mcp:allTools"),
     callTool: (serverId: string, toolName: string, args: Record<string, unknown>) =>
@@ -134,11 +142,35 @@ contextBridge.exposeInMainWorld("codexAgent", {
 
   sessions: {
     list: () => ipcRenderer.invoke("sessions:list"),
-    create: (args: { title?: string; model?: string; modelRef?: string; systemPrompt: string; agentId?: string; sessionId?: string }) =>
+    create: (args: { title?: string; model?: string; modelRef?: string; systemPrompt: string; agentId?: string; projectContextId?: string; sessionId?: string }) =>
       ipcRenderer.invoke("sessions:create", args),
     get: (sessionId: string) => ipcRenderer.invoke("sessions:get", sessionId),
     patch: (sessionId: string, patch: any) => ipcRenderer.invoke("sessions:patch", sessionId, patch),
     delete: (sessionId: string) => ipcRenderer.invoke("sessions:delete", sessionId),
+  },
+
+  tasks: {
+    list: (args?: { status?: string; projectContextId?: string; includeDone?: boolean }) => ipcRenderer.invoke("tasks:list", args),
+    get: (taskId: string) => ipcRenderer.invoke("tasks:get", taskId),
+    create: (task: any) => ipcRenderer.invoke("tasks:create", task),
+    update: (taskId: string, patch: any) => ipcRenderer.invoke("tasks:update", taskId, patch),
+    complete: (taskId: string) => ipcRenderer.invoke("tasks:complete", taskId),
+    delete: (taskId: string) => ipcRenderer.invoke("tasks:delete", taskId),
+  },
+
+  reminders: {
+    list: (args?: { status?: string; includeCanceled?: boolean; includeAcknowledged?: boolean; limit?: number }) =>
+      ipcRenderer.invoke("reminders:list", args),
+    get: (reminderId: string) => ipcRenderer.invoke("reminders:get", reminderId),
+    create: (reminder: any) => ipcRenderer.invoke("reminders:create", reminder),
+    update: (reminderId: string, patch: any) => ipcRenderer.invoke("reminders:update", reminderId, patch),
+    acknowledge: (reminderId: string) => ipcRenderer.invoke("reminders:acknowledge", reminderId),
+    cancel: (reminderId: string) => ipcRenderer.invoke("reminders:cancel", reminderId),
+    delete: (reminderId: string) => ipcRenderer.invoke("reminders:delete", reminderId),
+  },
+
+  notifications: {
+    onEvent: (cb: (event: any) => void) => onIpc("notifications:event", cb),
   },
 
   runs: {
@@ -152,6 +184,11 @@ contextBridge.exposeInMainWorld("codexAgent", {
     get: (sessionId: string) => ipcRenderer.invoke("workspaces:get", sessionId),
     reindex: (sessionId: string) => ipcRenderer.invoke("workspaces:reindex", sessionId),
     status: (sessionId: string) => ipcRenderer.invoke("workspaces:status", sessionId),
+  },
+
+  cowork: {
+    workspace: () => ipcRenderer.invoke("cowork:workspace"),
+    file: (relativePath: string) => ipcRenderer.invoke("cowork:file", relativePath),
   },
 
   browser: {

@@ -1,0 +1,36 @@
+{
+  "id": "cowork-end-of-day-report",
+  "name": "End of Day Report",
+  "description": "Summarize what moved today, what was decided, and what should be picked up next.",
+  "steps": [
+    {
+      "id": "task_snapshot",
+      "type": "tool-call",
+      "toolName": "manage_tasks",
+      "toolArgs": {
+        "action": "list",
+        "includeDone": "true"
+      }
+    },
+    {
+      "id": "recent_memory",
+      "type": "memory-query",
+      "memoryQuery": "decision progress blocker completed shipped follow-up",
+      "memoryLimit": 8
+    },
+    {
+      "id": "draft_report",
+      "type": "agent-chat",
+      "prompt": "Create an end-of-day report for today. Use connected email, calendar, docs, or task tools if they are available. If they are not available, clearly note the missing sources and continue with the local data below.\n\nTask snapshot:\n{{step.task_snapshot.output}}\n\nRecent memory:\n{{step.recent_memory.output}}\n\nReturn sections: Wins, Decisions made, Pending follow-ups, Blockers, Best starting point for tomorrow."
+    }
+  ],
+  "variables": {},
+  "schedule": {
+    "enabled": false,
+    "intervalMinutes": 1440,
+    "retryOnFailure": true,
+    "maxRetries": 2
+  },
+  "createdAt": 0,
+  "updatedAt": 0
+}

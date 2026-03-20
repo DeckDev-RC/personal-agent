@@ -1,0 +1,27 @@
+{
+  "id": "cowork-inbox-triage",
+  "name": "Inbox Triage",
+  "description": "Classify the inbox, surface urgency, and suggest the next responses or actions.",
+  "steps": [
+    {
+      "id": "recent_memory",
+      "type": "memory-query",
+      "memoryQuery": "email follow-up urgent waiting reply customer stakeholder",
+      "memoryLimit": 6
+    },
+    {
+      "id": "triage_inbox",
+      "type": "agent-chat",
+      "prompt": "Inspect inbox-related context and prepare an inbox triage summary. Use connected email tools if they are available. If there are no email tools connected, state that clearly and provide a manual triage checklist instead.\n\nRecent memory:\n{{step.recent_memory.output}}\n\nReturn sections: Urgent now, Needs reply today, Waiting on others, Can defer, Suggested next messages."
+    }
+  ],
+  "variables": {},
+  "schedule": {
+    "enabled": false,
+    "intervalMinutes": 240,
+    "retryOnFailure": true,
+    "maxRetries": 2
+  },
+  "createdAt": 0,
+  "updatedAt": 0
+}

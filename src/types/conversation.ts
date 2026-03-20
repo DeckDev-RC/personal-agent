@@ -13,6 +13,7 @@ export type Conversation = {
   id: string;
   title: string;
   agentId?: string;
+  projectContextId?: string;
   model: string;
   systemPrompt: string;
   messages: ConversationMessage[];
@@ -24,6 +25,7 @@ export type ConversationSummary = {
   id: string;
   title: string;
   agentId?: string;
+  projectContextId?: string;
   model: string;
   messageCount: number;
   createdAt: number;

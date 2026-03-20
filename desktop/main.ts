@@ -12,6 +12,7 @@ import type { Skill } from "../src/types/skill.js";
 import type { DaemonEnvelope } from "../src/types/daemon.js";
 import { startDaemonProcess, type DaemonProcessHandle } from "./daemon/process.js";
 import { resolveDataRoot } from "./services/dataRoot.js";
+import { notifyReminderTriggered, setNotificationWindow } from "./services/notificationManager.js";
 import {
   deleteProviderAuth,
   getProviderAuthStatus,
@@ -139,6 +140,9 @@ function handleDaemonEvent(envelope: DaemonEnvelope) {
     case "job.updated":
       emitRuntimeEvent({ type: "job_updated", ...(envelope.data as object) });
       break;
+    case "reminder.triggered":
+      notifyReminderTriggered((envelope.data as any).reminder);
+      break;
     default:
       break;
   }
@@ -227,6 +231,7 @@ async function handleStreamChat(
     sessionId?: string;
     title?: string;
     agentId?: string;
+    projectContextId?: string;
     model?: string;
     modelRef?: string;
     systemPrompt: string;
@@ -267,6 +272,7 @@ async function handleStreamChat(
       sessionId: params.sessionId,
       title: params.title,
       agentId: params.agentId,
+      projectContextId: params.projectContextId,
       modelRef: params.modelRef ?? params.model,
       systemPrompt: params.systemPrompt,
       mcpServerIds: params.mcpServerIds,
@@ -503,6 +509,12 @@ function registerIpcHandlers() {
   ipcMain.handle("store:workflows:save", (_e, workflow: any) => daemonClient().post("/entities/workflows", workflow));
   ipcMain.handle("store:workflows:delete", (_e, id: string) => daemonClient().delete(`/entities/workflows/${id}`));
 
+  // Store: Project Contexts
+  ipcMain.handle("store:contexts:list", () => daemonClient().get("/entities/contexts"));
+  ipcMain.handle("store:contexts:get", (_e, id: string) => daemonClient().get(`/entities/contexts/${id}`));
+  ipcMain.handle("store:contexts:save", (_e, projectContext: any) => daemonClient().post("/entities/contexts", projectContext));
+  ipcMain.handle("store:contexts:delete", (_e, id: string) => daemonClient().delete(`/entities/contexts/${id}`));
+
   // Store: MCP Servers
   ipcMain.handle("store:mcp:list", () => daemonClient().get("/entities/mcp"));
   ipcMain.handle("store:mcp:get", (_e, id: string) => daemonClient().get(`/entities/mcp/${id}`));
@@ -514,6 +526,7 @@ function registerIpcHandlers() {
   ipcMain.handle("mcp:disconnect", async (_e, id: string) => daemonClient().post("/mcp/disconnect", { id }));
   ipcMain.handle("mcp:status", (_e, id: string) => daemonClient().get(`/mcp/status/${id}`));
   ipcMain.handle("mcp:statuses", () => daemonClient().get("/mcp/statuses"));
+  ipcMain.handle("mcp:catalog", () => daemonClient().get("/mcp/catalog"));
   ipcMain.handle("mcp:tools", (_e, id: string) => daemonClient().get(`/mcp/tools/${id}`));
   ipcMain.handle("mcp:allTools", () => daemonClient().get("/mcp/tools"));
   ipcMain.handle("mcp:callTool", async (_e, args: { serverId: string; toolName: string; args: Record<string, unknown> }) => {
@@ -526,12 +539,42 @@ function registerIpcHandlers() {
 
   // Sessions v2
   ipcMain.handle("sessions:list", () => daemonClient().get("/sessions"));
-  ipcMain.handle("sessions:create", (_e, args: { title?: string; model?: string; modelRef?: string; systemPrompt: string; agentId?: string; sessionId?: string }) =>
+  ipcMain.handle("sessions:create", (_e, args: { title?: string; model?: string; modelRef?: string; systemPrompt: string; agentId?: string; projectContextId?: string; sessionId?: string }) =>
     daemonClient().post("/sessions", args),
   );
   ipcMain.handle("sessions:get", (_e, sessionId: string) => daemonClient().get(`/sessions/${sessionId}`));
   ipcMain.handle("sessions:patch", (_e, sessionId: string, patch: any) => daemonClient().patch(`/sessions/${sessionId}`, patch));
   ipcMain.handle("sessions:delete", (_e, sessionId: string) => daemonClient().delete(`/sessions/${sessionId}`));
+
+  // Tasks
+  ipcMain.handle("tasks:list", (_e, args?: { status?: string; projectContextId?: string; includeDone?: boolean }) => {
+    const query = new URLSearchParams();
+    if (args?.status) query.set("status", args.status);
+    if (args?.projectContextId) query.set("projectContextId", args.projectContextId);
+    if (typeof args?.includeDone === "boolean") query.set("includeDone", String(args.includeDone));
+    return daemonClient().get(`/tasks${query.toString() ? `?${query.toString()}` : ""}`);
+  });
+  ipcMain.handle("tasks:get", (_e, taskId: string) => daemonClient().get(`/tasks/${taskId}`));
+  ipcMain.handle("tasks:create", (_e, task: any) => daemonClient().post("/tasks", task));
+  ipcMain.handle("tasks:update", (_e, taskId: string, patch: any) => daemonClient().patch(`/tasks/${taskId}`, patch));
+  ipcMain.handle("tasks:complete", (_e, taskId: string) => daemonClient().patch(`/tasks/${taskId}`, { action: "complete" }));
+  ipcMain.handle("tasks:delete", (_e, taskId: string) => daemonClient().delete(`/tasks/${taskId}`));
+
+  // Reminders
+  ipcMain.handle("reminders:list", (_e, args?: { status?: string; includeCanceled?: boolean; includeAcknowledged?: boolean; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (args?.status) query.set("status", args.status);
+    if (typeof args?.includeCanceled === "boolean") query.set("includeCanceled", String(args.includeCanceled));
+    if (typeof args?.includeAcknowledged === "boolean") query.set("includeAcknowledged", String(args.includeAcknowledged));
+    if (typeof args?.limit === "number") query.set("limit", String(args.limit));
+    return daemonClient().get(`/reminders${query.toString() ? `?${query.toString()}` : ""}`);
+  });
+  ipcMain.handle("reminders:get", (_e, reminderId: string) => daemonClient().get(`/reminders/${reminderId}`));
+  ipcMain.handle("reminders:create", (_e, reminder: any) => daemonClient().post("/reminders", reminder));
+  ipcMain.handle("reminders:update", (_e, reminderId: string, patch: any) => daemonClient().patch(`/reminders/${reminderId}`, patch));
+  ipcMain.handle("reminders:acknowledge", (_e, reminderId: string) => daemonClient().patch(`/reminders/${reminderId}`, { action: "acknowledge" }));
+  ipcMain.handle("reminders:cancel", (_e, reminderId: string) => daemonClient().patch(`/reminders/${reminderId}`, { action: "cancel" }));
+  ipcMain.handle("reminders:delete", (_e, reminderId: string) => daemonClient().delete(`/reminders/${reminderId}`));
 
   // Runs v2
   ipcMain.handle("runs:start", async (_e, args: any) => {
@@ -539,6 +582,7 @@ function registerIpcHandlers() {
       sessionId: args.sessionId,
       title: args.title,
       agentId: args.agentId,
+      projectContextId: args.projectContextId,
       modelRef: args.modelRef ?? args.model,
       systemPrompt: args.systemPrompt,
       prompt: args.prompt,
@@ -560,6 +604,10 @@ function registerIpcHandlers() {
   ipcMain.handle("workspaces:get", (_e, sessionId: string) => daemonClient().get(`/workspaces/${sessionId}`));
   ipcMain.handle("workspaces:reindex", (_e, sessionId: string) => daemonClient().post("/workspaces/reindex", { sessionId }));
   ipcMain.handle("workspaces:status", (_e, sessionId: string) => daemonClient().get(`/workspaces/${sessionId}`));
+  ipcMain.handle("cowork:workspace", () => daemonClient().get("/cowork/workspace"));
+  ipcMain.handle("cowork:file", (_e, relativePath: string) =>
+    daemonClient().get(`/cowork/file?path=${encodeURIComponent(relativePath)}`),
+  );
   ipcMain.handle("browser:status", (_e, sessionId: string) => daemonClient().get(`/browser/status/${sessionId}`));
   ipcMain.handle("browser:invoke", (_e, args: Record<string, unknown>) => daemonClient().post("/browser/invoke", args));
   ipcMain.handle("browser:reset", (_e, sessionId: string) => daemonClient().post("/browser/reset", { sessionId }));
@@ -655,11 +703,13 @@ function createMainWindow() {
   });
 
   mainWindow = win;
+  setNotificationWindow(win);
 
   const indexHtml = path.join(process.cwd(), "ui-dist", "index.html");
   win.loadFile(indexHtml);
 
   win.on("closed", () => {
+    setNotificationWindow(null);
     mainWindow = null;
   });
 }

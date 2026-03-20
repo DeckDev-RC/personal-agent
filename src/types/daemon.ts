@@ -9,6 +9,7 @@ import type {
   ToolHistoryRecord,
   WorkspaceRecord,
 } from "./runtime.js";
+import type { ReminderRecord } from "./reminder.js";
 
 export type DaemonEventName =
   | "run.queued"
@@ -20,7 +21,8 @@ export type DaemonEventName =
   | "run.artifact_created"
   | "run.completed"
   | "run.failed"
-  | "job.updated";
+  | "job.updated"
+  | "reminder.triggered";
 
 export type DaemonEnvelope<TEvent extends DaemonEventName = DaemonEventName, TData = unknown> = {
   event: TEvent;
@@ -103,6 +105,10 @@ export type DaemonRunFailedEvent = {
 
 export type DaemonJobEvent = {
   job: JobRecord;
+};
+
+export type DaemonReminderTriggeredEvent = {
+  reminder: ReminderRecord;
 };
 
 export type DaemonStateSnapshot = {

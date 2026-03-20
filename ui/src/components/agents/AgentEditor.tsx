@@ -2,12 +2,14 @@ import React, { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Save, Zap, Check } from "lucide-react";
 import { useAgentStore, type AgentConfig } from "../../stores/agentStore";
+import { useContextStore } from "../../stores/contextStore";
 import { useSkillStore, type Skill } from "../../stores/skillStore";
 import { useMcpStore, type McpServerConfig } from "../../stores/mcpStore";
 import Button from "../shared/Button";
 import Input from "../shared/Input";
 import { TextArea } from "../shared/Input";
 import Badge from "../shared/Badge";
+import Select from "../shared/Select";
 
 type AgentEditorProps = {
   agent?: AgentConfig;
@@ -142,6 +144,7 @@ function McpPicker({
 export default function AgentEditor({ agent, onClose }: AgentEditorProps) {
   const { t } = useTranslation();
   const { createAgent, updateAgent } = useAgentStore();
+  const { contexts, loaded: contextsLoaded, loadContexts } = useContextStore();
   const isNew = !agent;
 
   const [name, setName] = useState(agent?.name ?? "");
@@ -152,7 +155,14 @@ export default function AgentEditor({ agent, onClose }: AgentEditorProps) {
   const [model, setModel] = useState(agent?.model ?? "openai-codex/gpt-5.4");
   const [skillIds, setSkillIds] = useState<string[]>(agent?.skillIds ?? []);
   const [mcpServerIds, setMcpServerIds] = useState<string[]>(agent?.mcpServerIds ?? []);
+  const [projectContextId, setProjectContextId] = useState(agent?.projectContextId ?? "");
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!contextsLoaded) {
+      void loadContexts();
+    }
+  }, [contextsLoaded, loadContexts]);
 
   async function handleSave() {
     if (!name.trim()) return;
@@ -166,6 +176,7 @@ export default function AgentEditor({ agent, onClose }: AgentEditorProps) {
           model: model.trim(),
           skillIds,
           mcpServerIds,
+          projectContextId: projectContextId || undefined,
         });
       } else {
         await updateAgent({
@@ -176,6 +187,7 @@ export default function AgentEditor({ agent, onClose }: AgentEditorProps) {
           model: model.trim(),
           skillIds,
           mcpServerIds,
+          projectContextId: projectContextId || undefined,
           updatedAt: Date.now(),
         });
       }
@@ -221,6 +233,19 @@ export default function AgentEditor({ agent, onClose }: AgentEditorProps) {
             value={model}
             onChange={(e) => setModel(e.target.value)}
             placeholder="openai-codex/gpt-5.4"
+          />
+
+          <Select
+            label={t("agents.projectContext")}
+            value={projectContextId}
+            onChange={setProjectContextId}
+            options={[
+              { value: "", label: t("contexts.none") },
+              ...contexts.map((projectContext) => ({
+                value: projectContext.id,
+                label: projectContext.name,
+              })),
+            ]}
           />
 
           <TextArea

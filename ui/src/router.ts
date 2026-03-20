@@ -1,8 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
 
 export type RouteView =
+  | "today"
   | "chat"
+  | "notifications"
+  | "workspace"
   | "agents"
+  | "contexts"
+  | "tasks"
   | "skills"
   | "workflows"
   | "mcp"
@@ -11,13 +16,13 @@ export type RouteView =
   | "settings";
 
 const VALID_VIEWS = new Set<RouteView>([
-  "chat", "agents", "skills", "workflows", "mcp", "analytics", "logs", "settings",
+  "today", "chat", "notifications", "workspace", "agents", "contexts", "tasks", "skills", "workflows", "mcp", "analytics", "logs", "settings",
 ]);
 
 function parseHash(): { view: RouteView; param?: string } {
   const hash = window.location.hash.replace(/^#\/?/, "");
   const [segment, ...rest] = hash.split("/");
-  const view = VALID_VIEWS.has(segment as RouteView) ? (segment as RouteView) : "chat";
+  const view = VALID_VIEWS.has(segment as RouteView) ? (segment as RouteView) : "today";
   const param = rest.length > 0 ? rest.join("/") : undefined;
   return { view, param };
 }

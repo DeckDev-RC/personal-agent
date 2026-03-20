@@ -6,6 +6,8 @@ import type { Workflow } from "../../src/types/workflow.js";
 import type { JobRecord } from "../../src/types/runtime.js";
 import type { AgentConfig } from "../../src/types/agent.js";
 import type { McpServerConfig } from "../../src/types/mcp.js";
+import type { ProjectContext } from "../../src/types/projectContext.js";
+import type { ReminderRecord } from "../../src/types/reminder.js";
 import type { Skill } from "../../src/types/skill.js";
 import type { V2AppSettings } from "../services/v2EntityStore.js";
 import { enqueueScopedJob } from "../services/jobQueue.js";
@@ -18,6 +20,8 @@ import {
   startWorkflowRun,
 } from "../services/runtimeExecutor.js";
 import { getRuntimeStatus } from "../services/runtimeStatus.js";
+import { RECOMMENDED_MCP_CATALOG } from "../services/coworkDefaults.js";
+import { searchProjectContextMemory } from "../services/projectContext.js";
 import {
   closeAllBrowserSessions,
   getBrowserSessionStatus,
@@ -27,22 +31,39 @@ import { listCapabilityDescriptors } from "../services/capabilityRegistry.js";
 import { buildRegisteredTools } from "../services/toolRegistry.js";
 import { getEffectiveToolRiskDecision, startDirectToolInvocation } from "../services/toolExecutionService.js";
 import { reindexWorkspace, setWorkspaceRootForSession } from "../services/workspaceIndex.js";
+import { listCoworkWorkspaceFiles, readCoworkWorkspaceFile } from "../services/coworkWorkspace.js";
+import {
+  acknowledgeReminder,
+  cancelReminder,
+  createReminder,
+  deleteReminder,
+  getReminder,
+  listReminders,
+  startReminderScheduler,
+  stopReminderScheduler,
+  updateReminder,
+} from "../services/reminderScheduler.js";
+import { completeTask, createTask, deleteTask, getTask, listTasks, updateTask } from "../services/taskManager.js";
 import {
   deleteAgentV2,
   deleteMcpServerV2,
+  deleteProjectContextV2,
   deleteSkillV2,
   deleteWorkflowV2,
   getAgentV2,
   getMcpServerV2,
+  getProjectContextV2,
   getSettingsV2,
   getSkillV2,
   getWorkflowV2,
   listAgentsV2,
   listMcpServersV2,
+  listProjectContextsV2,
   listSkillsV2,
   listWorkflowsV2,
   saveAgentV2,
   saveMcpServerV2,
+  saveProjectContextV2,
   saveSettingsV2,
   saveSkillV2,
   saveWorkflowV2,
@@ -127,6 +148,12 @@ export class CodexAgentDaemon {
   async listen(port: number): Promise<number> {
     await mcp.connectEnabledServers(await listMcpServersV2());
     await this.refreshWorkflowSchedules();
+    await startReminderScheduler((reminder: ReminderRecord) => {
+      publishDaemonEvent({
+        event: "reminder.triggered",
+        data: { reminder },
+      });
+    });
     await new Promise<void>((resolve) => this.server.listen(port, "127.0.0.1", resolve));
     return (this.server.address() as AddressInfo).port;
   }
@@ -136,6 +163,7 @@ export class CodexAgentDaemon {
       clearInterval(scheduled.timer);
     }
     this.scheduledWorkflows.clear();
+    await stopReminderScheduler();
     await closeAllBrowserSessions();
     await mcp.disconnectAll();
     await new Promise<void>((resolve, reject) => {
@@ -310,12 +338,14 @@ export class CodexAgentDaemon {
         skills: listSkillsV2,
         workflows: listWorkflowsV2,
         mcp: listMcpServersV2,
+        contexts: listProjectContextsV2,
       } as const;
       const getMap = {
         agents: getAgentV2,
         skills: getSkillV2,
         workflows: getWorkflowV2,
         mcp: getMcpServerV2,
+        contexts: getProjectContextV2,
       } as const;
       if (kind in listMap) {
         sendJson(res, 200, id ? await getMap[kind as keyof typeof getMap](id) : await listMap[kind as keyof typeof listMap]());
@@ -335,6 +365,8 @@ export class CodexAgentDaemon {
         await this.refreshWorkflowSchedules();
       } else if (kind === "mcp") {
         await saveMcpServerV2(body as McpServerConfig);
+      } else if (kind === "contexts") {
+        await saveProjectContextV2(body as ProjectContext);
       } else {
         sendNotFound(res);
         return;
@@ -355,6 +387,8 @@ export class CodexAgentDaemon {
         await this.refreshWorkflowSchedules();
       } else if (kind === "mcp") {
         await deleteMcpServerV2(id);
+      } else if (kind === "contexts") {
+        await deleteProjectContextV2(id);
       } else {
         sendNotFound(res);
         return;
@@ -382,7 +416,15 @@ export class CodexAgentDaemon {
     }
 
     if (url.pathname === "/sessions" && method === "POST") {
-      const body = await readJson<{ title?: string; model?: string; modelRef?: string; systemPrompt: string; agentId?: string; sessionId?: string }>(req);
+      const body = await readJson<{
+        title?: string;
+        model?: string;
+        modelRef?: string;
+        systemPrompt: string;
+        agentId?: string;
+        projectContextId?: string;
+        sessionId?: string;
+      }>(req);
       sendJson(
         res,
         200,
@@ -423,6 +465,7 @@ export class CodexAgentDaemon {
         sessionId?: string;
         title?: string;
         agentId?: string;
+        projectContextId?: string;
         model?: string;
         modelRef?: string;
         systemPrompt: string;
@@ -624,6 +667,21 @@ export class CodexAgentDaemon {
       return;
     }
 
+    if (url.pathname === "/cowork/workspace" && method === "GET") {
+      sendJson(res, 200, await listCoworkWorkspaceFiles());
+      return;
+    }
+
+    if (url.pathname === "/cowork/file" && method === "GET") {
+      const relativePath = url.searchParams.get("path") ?? "";
+      if (!relativePath.trim()) {
+        sendJson(res, 400, { ok: false, error: "Missing cowork workspace path." });
+        return;
+      }
+      sendJson(res, 200, await readCoworkWorkspaceFile(relativePath));
+      return;
+    }
+
     if (url.pathname === "/memory/search" && method === "GET") {
       const sessionId = url.searchParams.get("sessionId") ?? undefined;
       const query = url.searchParams.get("query") ?? "";
@@ -707,6 +765,122 @@ export class CodexAgentDaemon {
       return;
     }
 
+    if (url.pathname === "/tasks" && method === "GET") {
+      const status = url.searchParams.get("status") ?? undefined;
+      const projectContextId = url.searchParams.get("projectContextId") ?? undefined;
+      const includeDone = url.searchParams.get("includeDone") === "true";
+      sendJson(
+        res,
+        200,
+        await listTasks({
+          status: status as any,
+          projectContextId,
+          includeDone,
+        }),
+      );
+      return;
+    }
+
+    if (url.pathname === "/tasks" && method === "POST") {
+      sendJson(res, 200, await createTask(await readJson(req)));
+      return;
+    }
+
+    if (pathParts[0] === "tasks" && pathParts[1]) {
+      const taskId = pathParts[1];
+      if (method === "GET") {
+        const task = await getTask(taskId);
+        if (!task) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, task);
+        return;
+      }
+      if (method === "PATCH") {
+        const body = await readJson<any>(req);
+        const task =
+          body?.action === "complete"
+            ? await completeTask(taskId)
+            : await updateTask(taskId, body);
+        if (!task) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, task);
+        return;
+      }
+      if (method === "DELETE") {
+        const deleted = await deleteTask(taskId);
+        if (!deleted) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+    }
+
+    if (url.pathname === "/reminders" && method === "GET") {
+      const status = url.searchParams.get("status") ?? undefined;
+      const includeCanceled = url.searchParams.get("includeCanceled") === "true";
+      const includeAcknowledged = url.searchParams.get("includeAcknowledged") === "true";
+      const limitRaw = url.searchParams.get("limit");
+      sendJson(
+        res,
+        200,
+        await listReminders({
+          status: status as any,
+          includeCanceled,
+          includeAcknowledged,
+          limit: limitRaw ? Number(limitRaw) : undefined,
+        }),
+      );
+      return;
+    }
+
+    if (url.pathname === "/reminders" && method === "POST") {
+      sendJson(res, 200, await createReminder(await readJson(req)));
+      return;
+    }
+
+    if (pathParts[0] === "reminders" && pathParts[1]) {
+      const reminderId = pathParts[1];
+      if (method === "GET") {
+        const reminder = await getReminder(reminderId);
+        if (!reminder) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, reminder);
+        return;
+      }
+      if (method === "PATCH") {
+        const body = await readJson<any>(req);
+        const reminder =
+          body?.action === "acknowledge"
+            ? await acknowledgeReminder(reminderId)
+            : body?.action === "cancel"
+              ? await cancelReminder(reminderId)
+              : await updateReminder(reminderId, body);
+        if (!reminder) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, reminder);
+        return;
+      }
+      if (method === "DELETE") {
+        const deleted = await deleteReminder(reminderId);
+        if (!deleted) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+    }
+
     if (pathParts[0] === "jobs" && pathParts[1] && method === "GET") {
       sendJson(res, 200, await getJobRecord(pathParts[1]));
       return;
@@ -749,6 +923,26 @@ export class CodexAgentDaemon {
 
     if (url.pathname === "/mcp/statuses" && method === "GET") {
       sendJson(res, 200, mcp.getAllStatuses());
+      return;
+    }
+
+    if (url.pathname === "/mcp/catalog" && method === "GET") {
+      sendJson(res, 200, RECOMMENDED_MCP_CATALOG);
+      return;
+    }
+
+    if (pathParts[0] === "contexts" && pathParts[1] && pathParts[2] === "search" && method === "GET") {
+      const query = url.searchParams.get("query") ?? "";
+      const limit = Number(url.searchParams.get("limit") ?? "8");
+      sendJson(
+        res,
+        200,
+        await searchProjectContextMemory({
+          projectContextId: pathParts[1],
+          query,
+          limit,
+        }),
+      );
       return;
     }
 

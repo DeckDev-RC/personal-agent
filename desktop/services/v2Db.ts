@@ -47,6 +47,7 @@ function initSchema(db: DatabaseSync) {
       session_id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       agent_id TEXT,
+      project_context_id TEXT,
       model TEXT NOT NULL,
       system_prompt TEXT NOT NULL,
       workspace_id TEXT,
@@ -172,6 +173,36 @@ function initSchema(db: DatabaseSync) {
       completed_at INTEGER
     );
 
+    CREATE TABLE IF NOT EXISTS tasks (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL,
+      status TEXT NOT NULL,
+      priority TEXT NOT NULL,
+      project_context_id TEXT,
+      due_date TEXT,
+      source TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      completed_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS reminders (
+      id TEXT PRIMARY KEY,
+      message TEXT NOT NULL,
+      trigger_at INTEGER NOT NULL,
+      recurring TEXT NOT NULL DEFAULT 'none',
+      status TEXT NOT NULL DEFAULT 'pending',
+      project_context_id TEXT,
+      session_id TEXT,
+      source TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      delivered_at INTEGER,
+      acknowledged_at INTEGER,
+      canceled_at INTEGER
+    );
+
     CREATE TABLE IF NOT EXISTS browser_sessions (
       browser_session_id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -246,8 +277,20 @@ function initSchema(db: DatabaseSync) {
   `);
 }
 
+function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string) {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<Record<string, unknown>>;
+  if (rows.some((row) => String(row.name) === column)) {
+    return;
+  }
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+
+function ensureSchemaUpgrades(db: DatabaseSync) {
+  ensureColumn(db, "sessions", "project_context_id", "TEXT");
+}
+
 async function migrateEntityCollection<T extends { id: string; updatedAt?: number }>(
-  kind: "agents" | "skills" | "workflows" | "mcp_servers",
+  kind: "agents" | "skills" | "workflows" | "mcp_servers" | "project_contexts",
   legacyName: "agents" | "skills" | "workflows" | "mcp-servers",
 ) {
   const items = await readJsonFile<T[]>(legacyCollectionPath(legacyName), []);
@@ -378,6 +421,7 @@ export async function ensureV2Db(): Promise<DatabaseSync> {
     await ensureDir(sessionsDir());
     const db = getDbInternal();
     initSchema(db);
+    ensureSchemaUpgrades(db);
     await runMigration();
     initialized = true;
   })();

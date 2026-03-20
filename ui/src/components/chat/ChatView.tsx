@@ -19,10 +19,12 @@ import {
 import { useAgentStore, DEFAULT_AGENT, type AgentConfig } from "../../stores/agentStore";
 import { useAuthStore } from "../../stores/authStore";
 import { useChatStore } from "../../stores/chatStore";
+import { useContextStore } from "../../stores/contextStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useSkillStore } from "../../stores/skillStore";
 import Badge from "../shared/Badge";
 import Button from "../shared/Button";
+import ContextSelector from "../context/ContextSelector";
 import ChatInput, { type PendingAttachment } from "./ChatInput";
 import ConversationList from "./ConversationList";
 import MessageList from "./MessageList";
@@ -150,7 +152,11 @@ function PhaseRail({ activePhase }: { activePhase?: string }) {
   );
 }
 
-export default function ChatView() {
+type ChatViewProps = {
+  sessionId?: string;
+};
+
+export default function ChatView({ sessionId }: ChatViewProps) {
   const { t } = useTranslation();
   const {
     conversations,
@@ -182,9 +188,16 @@ export default function ChatView() {
   const settings = useSettingsStore((state) => state.settings);
   const getProviderStatus = useAuthStore((state) => state.getProviderStatus);
   const { loaded: agentsLoaded, loadAgents } = useAgentStore();
+  const {
+    loaded: contextsLoaded,
+    loadContexts,
+    activeContextId,
+    setActiveContextId,
+  } = useContextStore();
   const { loaded: skillsLoaded, loadSkills } = useSkillStore();
 
   const [selectedAgentId, setSelectedAgentId] = useState("__default__");
+  const [selectedContextId, setSelectedContextId] = useState("");
   const [workspaceInput, setWorkspaceInput] = useState("");
   const [workspaceState, setWorkspaceState] = useState<any | null>(null);
   const [approvals, setApprovals] = useState<any[]>([]);
@@ -207,13 +220,29 @@ export default function ChatView() {
   }, [skillsLoaded, loadSkills]);
 
   useEffect(() => {
+    if (!contextsLoaded) void loadContexts();
+  }, [contextsLoaded, loadContexts]);
+
+  useEffect(() => {
     setSelectedAgentId(activeConversation?.agentId ?? "__default__");
+    const fallbackAgent =
+      useAgentStore.getState().getAgent(activeConversation?.agentId ?? "__default__") ?? DEFAULT_AGENT;
+    const nextContextId =
+      activeConversation?.projectContextId ?? fallbackAgent.projectContextId ?? activeContextId ?? "";
+    setSelectedContextId(nextContextId);
     setWorkspaceInput(activeConversation?.workspaceRoot ?? "");
-  }, [activeConversation?.id, activeConversation?.agentId, activeConversation?.workspaceRoot]);
+  }, [activeConversation?.id, activeConversation?.agentId, activeConversation?.projectContextId, activeConversation?.workspaceRoot, activeContextId]);
 
   useEffect(() => {
     resetInspectorSections();
   }, [activeConversation?.id, resetInspectorSections]);
+
+  useEffect(() => {
+    if (!sessionId || sessionId === activeConversation?.id) {
+      return;
+    }
+    void selectConversation(sessionId);
+  }, [activeConversation?.id, selectConversation, sessionId]);
 
   const refreshSessionDetails = useCallback(async (sessionId?: string) => {
     if (!sessionId || sessionId.startsWith("draft-")) return;
@@ -350,26 +379,71 @@ export default function ChatView() {
 
   const handleNewChat = useCallback(async () => {
     const agent = getSelectedAgent();
-    createConversation(agent.model || settings.defaultModelRef, buildSystemPrompt(agent), agent.id);
-  }, [buildSystemPrompt, createConversation, getSelectedAgent, settings.defaultModelRef]);
+    const nextContextId = selectedContextId || agent.projectContextId || "";
+    if (nextContextId) {
+      setActiveContextId(nextContextId);
+    }
+    createConversation(
+      agent.model || settings.defaultModelRef,
+      buildSystemPrompt(agent),
+      agent.id,
+      nextContextId || undefined,
+    );
+  }, [buildSystemPrompt, createConversation, getSelectedAgent, selectedContextId, setActiveContextId, settings.defaultModelRef]);
 
   const handleAgentSelect = useCallback((agent: AgentConfig) => {
     setSelectedAgentId(agent.id);
     if (activeConversation && activeConversation.messages.length === 0) {
+      const nextContextId =
+        activeConversation.projectContextId ||
+        selectedContextId ||
+        agent.projectContextId ||
+        "";
+      setSelectedContextId(nextContextId);
+      if (nextContextId) {
+        setActiveContextId(nextContextId);
+      }
       patchActiveConversation({
         agentId: agent.id,
+        projectContextId: nextContextId || undefined,
         model: agent.model || settings.defaultModelRef,
         systemPrompt: buildSystemPrompt(agent),
       });
     }
-  }, [activeConversation, buildSystemPrompt, patchActiveConversation, settings.defaultModelRef]);
+  }, [activeConversation, buildSystemPrompt, patchActiveConversation, selectedContextId, setActiveContextId, settings.defaultModelRef]);
+
+  const handleContextSelect = useCallback(async (contextId: string) => {
+    setSelectedContextId(contextId);
+    setActiveContextId(contextId);
+
+    const current = useChatStore.getState().activeConversation;
+    if (!current) {
+      return;
+    }
+
+    patchActiveConversation({
+      projectContextId: contextId || undefined,
+    });
+
+    if (!current.id.startsWith("draft-")) {
+      await api().sessions.patch(current.id, {
+        projectContextId: contextId,
+      });
+    }
+  }, [patchActiveConversation, setActiveContextId]);
 
   const handleSend = useCallback(async ({ message, attachments }: { message: string; attachments: PendingAttachment[] }) => {
     try {
       const agent = getSelectedAgent();
+      const resolvedProjectContextId = selectedContextId || agent.projectContextId || undefined;
       let current =
         useChatStore.getState().activeConversation ??
-        createConversation(agent.model || settings.defaultModelRef, buildSystemPrompt(agent), agent.id);
+        createConversation(
+          agent.model || settings.defaultModelRef,
+          buildSystemPrompt(agent),
+          agent.id,
+          resolvedProjectContextId,
+        );
 
       if (attachments.length > 0 && current.id.startsWith("draft-")) {
         const createdSession = await api().sessions.create({
@@ -377,6 +451,7 @@ export default function ChatView() {
           modelRef: current.model,
           systemPrompt: current.systemPrompt,
           agentId: agent.id,
+          projectContextId: current.projectContextId ?? resolvedProjectContextId,
         });
         attachRemoteSession(createdSession.sessionId);
         current = {
@@ -403,6 +478,7 @@ export default function ChatView() {
         sessionId: current.id.startsWith("draft-") ? undefined : current.id,
         title: current.title,
         agentId: agent.id,
+        projectContextId: current.projectContextId ?? resolvedProjectContextId,
         modelRef: current.model,
         systemPrompt: current.systemPrompt,
         messages: [
@@ -431,7 +507,7 @@ export default function ChatView() {
     } catch (error) {
       errorStreaming(error instanceof Error ? error.message : String(error));
     }
-  }, [addUserMessage, attachRemoteSession, buildSystemPrompt, createConversation, errorStreaming, getSelectedAgent, loadConversations, settings.defaultModelRef, startStreaming]);
+  }, [addUserMessage, attachRemoteSession, buildSystemPrompt, createConversation, errorStreaming, getSelectedAgent, loadConversations, selectedContextId, settings.defaultModelRef, startStreaming]);
 
   const handleWorkspaceSave = useCallback(async () => {
     if (!activeConversation || activeConversation.id.startsWith("draft-")) {
@@ -576,6 +652,7 @@ export default function ChatView() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <AgentSelector selectedAgentId={selectedAgentId} onSelect={handleAgentSelect} />
+                    <ContextSelector selectedContextId={selectedContextId} onSelect={(contextId) => void handleContextSelect(contextId)} />
                     {activeConversation?.lastRunStatus && (
                       <Badge
                         color={
