@@ -11,6 +11,7 @@ import {
   upsertBrowserSessionRecord,
 } from "./v2SessionStore.js";
 import type { NativeToolExecutionResult } from "./nativeTools.js";
+import type { BrowserToolName } from "./browserTools.js";
 
 export type BrowserRuntimeContext = {
   sessionId: string;
@@ -34,7 +35,16 @@ type BrowserArtifactHint = {
   memoryContent?: string;
 };
 
+export type BrowserActionEvent = {
+  sessionId: string;
+  action: BrowserToolName;
+  args: Record<string, unknown>;
+  currentUrl?: string;
+  timestamp: number;
+};
+
 const browserStates = new Map<string, BrowserState>();
+const browserActionListeners = new Set<(event: BrowserActionEvent) => void>();
 
 function resolveBrowserExecutablePath(): string | null {
   const candidates = [
@@ -164,8 +174,25 @@ function hostnameLabel(url: string): string {
   }
 }
 
+function emitBrowserAction(event: BrowserActionEvent): void {
+  for (const listener of browserActionListeners) {
+    try {
+      listener(event);
+    } catch {
+      // Event subscribers should not block browser execution.
+    }
+  }
+}
+
 export async function getBrowserSessionStatus(sessionId: string): Promise<BrowserSessionRecord | null> {
   return await getBrowserSessionRecord(sessionId);
+}
+
+export function subscribeBrowserActionEvents(listener: (event: BrowserActionEvent) => void): () => void {
+  browserActionListeners.add(listener);
+  return () => {
+    browserActionListeners.delete(listener);
+  };
 }
 
 export async function resetBrowserSession(sessionId: string): Promise<void> {
@@ -206,6 +233,12 @@ export async function executeBrowserTool(
 ): Promise<NativeToolExecutionResult> {
   if (toolName === "browser_close") {
     await resetBrowserSession(ctx.sessionId);
+    emitBrowserAction({
+      sessionId: ctx.sessionId,
+      action: toolName,
+      args,
+      timestamp: Date.now(),
+    });
     return {
       content: "Browser session closed.",
       metadata: {
@@ -234,6 +267,13 @@ export async function executeBrowserTool(
       status: "ready",
       lastError: undefined,
     });
+    emitBrowserAction({
+      sessionId: ctx.sessionId,
+      action: toolName,
+      args,
+      currentUrl: page.url(),
+      timestamp: Date.now(),
+    });
     return {
       content: `Opened ${page.url()}`,
       metadata: {
@@ -256,6 +296,13 @@ export async function executeBrowserTool(
       status: "ready",
       lastError: undefined,
     });
+    emitBrowserAction({
+      sessionId: ctx.sessionId,
+      action: toolName,
+      args,
+      currentUrl: page.url(),
+      timestamp: Date.now(),
+    });
     return {
       content: `Snapshot captured for ${page.url()}`,
       metadata: {
@@ -276,6 +323,13 @@ export async function executeBrowserTool(
       currentUrl: page.url(),
       status: "ready",
       lastError: undefined,
+    });
+    emitBrowserAction({
+      sessionId: ctx.sessionId,
+      action: toolName,
+      args,
+      currentUrl: page.url(),
+      timestamp: Date.now(),
     });
     return {
       content: `Clicked ${selector} on ${page.url()}`,
@@ -307,6 +361,13 @@ export async function executeBrowserTool(
       currentUrl: page.url(),
       status: "ready",
       lastError: undefined,
+    });
+    emitBrowserAction({
+      sessionId: ctx.sessionId,
+      action: toolName,
+      args,
+      currentUrl: page.url(),
+      timestamp: Date.now(),
     });
     return {
       content: `Typed into ${selector} on ${page.url()}`,
@@ -343,6 +404,13 @@ export async function executeBrowserTool(
       status: "ready",
       lastError: undefined,
     });
+    emitBrowserAction({
+      sessionId: ctx.sessionId,
+      action: toolName,
+      args,
+      currentUrl: page.url(),
+      timestamp: Date.now(),
+    });
     return {
       content: `Wait completed on ${page.url()}`,
       metadata: {
@@ -367,6 +435,13 @@ export async function executeBrowserTool(
       fullPage: args.fullPage === true,
       timeout: 15_000,
     });
+    emitBrowserAction({
+      sessionId: ctx.sessionId,
+      action: toolName,
+      args,
+      currentUrl: page.url(),
+      timestamp: Date.now(),
+    });
     return {
       content: `Screenshot captured for ${page.url()}`,
       metadata: {
@@ -389,6 +464,13 @@ export async function executeBrowserTool(
       currentUrl: page.url(),
       status: "ready",
       lastError: undefined,
+    });
+    emitBrowserAction({
+      sessionId: ctx.sessionId,
+      action: toolName,
+      args,
+      currentUrl: page.url(),
+      timestamp: Date.now(),
     });
     return {
       content: text,

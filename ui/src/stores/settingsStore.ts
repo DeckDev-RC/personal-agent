@@ -6,6 +6,7 @@ import {
   splitModelRef,
   type CanonicalProviderName,
 } from "../../../src/types/model.js";
+import type { ProactivitySettings } from "../../../src/types/proactive.js";
 
 export type ThemeMode = "dark" | "light" | "system";
 
@@ -24,6 +25,7 @@ type AppSettings = {
   reasoningEffort: "low" | "medium" | "high" | "xhigh";
   planMode: boolean;
   fastMode: boolean;
+  onboardingCompleted: boolean;
   globalSystemPrompt: string;
   contextWindow: number;
   compactAtTokens: number;
@@ -35,6 +37,7 @@ type AppSettings = {
     maxResults: number;
   };
   reasoningPolicyByTask: Record<string, "low" | "medium" | "high" | "xhigh">;
+  proactivity: ProactivitySettings;
 };
 
 type SettingsState = {
@@ -77,6 +80,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   reasoningEffort: "medium",
   planMode: false,
   fastMode: false,
+  onboardingCompleted: false,
   globalSystemPrompt: "",
   contextWindow: 128000,
   compactAtTokens: 96000,
@@ -95,6 +99,18 @@ const DEFAULT_SETTINGS: AppSettings = {
     command_exec: "medium",
     review_fix: "high",
     tool_invoke: "medium",
+  },
+  proactivity: {
+    enabled: true,
+    dashboard: true,
+    chat: true,
+    frequency: "balanced",
+    suggestionTypes: {
+      tasks: true,
+      routines: true,
+      context: true,
+      communication: true,
+    },
   },
 };
 
@@ -117,6 +133,14 @@ function normalizeSettings(settings?: Partial<AppSettings> | null): AppSettings 
     defaultModel: defaultModelRef,
     fastModel: fastModelRef,
     reviewModel: reviewModelRef,
+    proactivity: {
+      ...DEFAULT_SETTINGS.proactivity,
+      ...(settings?.proactivity ?? {}),
+      suggestionTypes: {
+        ...DEFAULT_SETTINGS.proactivity.suggestionTypes,
+        ...(settings?.proactivity?.suggestionTypes ?? {}),
+      },
+    },
   };
 }
 

@@ -4,8 +4,10 @@ export type RouteView =
   | "today"
   | "chat"
   | "notifications"
+  | "browser"
   | "workspace"
   | "documents"
+  | "knowledge"
   | "agents"
   | "contexts"
   | "tasks"
@@ -14,10 +16,12 @@ export type RouteView =
   | "mcp"
   | "analytics"
   | "logs"
-  | "settings";
+  | "settings"
+  | "communication";
 
 const VALID_VIEWS = new Set<RouteView>([
-  "today", "chat", "notifications", "workspace", "documents", "agents", "contexts", "tasks", "skills", "workflows", "mcp", "analytics", "logs", "settings",
+  "today", "chat", "notifications", "workspace", "documents", "knowledge", "agents", "contexts", "tasks", "skills", "workflows", "mcp", "analytics", "logs", "settings",
+  "browser", "communication",
 ]);
 
 function parseHash(): { view: RouteView; param?: string } {

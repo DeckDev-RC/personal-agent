@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg-primary: #0a0a0a;
-  --color-bg-secondary: #111111;
-  --color-bg-tertiary: #1a1a1a;
-  --color-border: #222222;
-  --color-text-primary: #e0e0e0;
-  --color-text-secondary: #888888;
-  --color-accent-green: #4ade80;
-  --color-accent-blue: #60a5fa;
-  --color-accent-orange: #fb923c;
+  --color-bg-primary: var(--bg);
+  --color-bg-secondary: var(--panel);
+  --color-bg-tertiary: var(--panel-strong);
+  --color-border: var(--border-subtle);
+  --color-text-primary: var(--text);
+  --color-text-secondary: var(--muted);
+  --color-accent-green: var(--ok);
+  --color-accent-blue: var(--info);
+  --color-accent-orange: var(--warn);
 }
 
 /* ---------------------------------------------------------------------------
@@ -17,6 +17,8 @@
    --------------------------------------------------------------------------- */
 
 :root {
+  color-scheme: dark;
+
   /* Backgrounds */
   --bg: #0a0a0a;
   --bg-accent: #111111;
@@ -95,6 +97,8 @@
    --------------------------------------------------------------------------- */
 
 [data-theme="light"] {
+  color-scheme: light;
+
   /* Backgrounds */
   --bg: #ffffff;
   --bg-accent: #f7f7f8;
@@ -244,6 +248,13 @@ body {
   background: var(--bg);
   color: var(--text);
   overflow: hidden;
+}
+
+html,
+body,
+#root {
+  background: var(--bg);
+  color: var(--text);
 }
 
 /* ---------------------------------------------------------------------------

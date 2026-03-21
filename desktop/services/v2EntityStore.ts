@@ -7,8 +7,11 @@ import {
   type CanonicalProviderName,
 } from "../../src/types/model.js";
 import type { McpServerConfig } from "../../src/types/mcp.js";
+import type { PersonaConfig } from "../../src/types/persona.js";
+import type { ProactivitySettings } from "../../src/types/proactive.js";
 import type { ProjectContext } from "../../src/types/projectContext.js";
 import type { Skill } from "../../src/types/skill.js";
+import type { WebRecipe } from "../../src/types/webRecipe.js";
 import type { Workflow } from "../../src/types/workflow.js";
 import { loadDefaultCoworkAgents, loadDefaultCoworkSkills, loadDefaultCoworkWorkflows } from "./coworkDefaults.js";
 import { ensureV2Db } from "./v2Db.js";
@@ -21,10 +24,12 @@ export type V2AppSettings = {
   defaultModel: string;
   fastModel: string;
   reviewModel: string;
-  language: "pt-BR" | "en";
+  language: "pt-BR" | "en" | "es" | "de" | "zh-CN" | "zh-TW";
+  themeMode: "dark" | "light" | "system";
   reasoningEffort: "low" | "medium" | "high" | "xhigh";
   planMode: boolean;
   fastMode: boolean;
+  onboardingCompleted: boolean;
   globalSystemPrompt: string;
   contextWindow: number;
   compactAtTokens: number;
@@ -36,6 +41,21 @@ export type V2AppSettings = {
     maxResults: number;
   };
   reasoningPolicyByTask: Record<string, "low" | "medium" | "high" | "xhigh">;
+  proactivity: ProactivitySettings;
+  persona?: PersonaConfig;
+};
+
+export const DEFAULT_PROACTIVITY_SETTINGS: ProactivitySettings = {
+  enabled: true,
+  dashboard: true,
+  chat: true,
+  frequency: "balanced",
+  suggestionTypes: {
+    tasks: true,
+    routines: true,
+    context: true,
+    communication: true,
+  },
 };
 
 export const DEFAULT_V2_SETTINGS: V2AppSettings = {
@@ -47,9 +67,11 @@ export const DEFAULT_V2_SETTINGS: V2AppSettings = {
   fastModel: "openai-codex/gpt-5.4-mini",
   reviewModel: getDefaultModelRef("openai-codex"),
   language: "pt-BR",
+  themeMode: "dark",
   reasoningEffort: "medium",
   planMode: false,
   fastMode: false,
+  onboardingCompleted: false,
   globalSystemPrompt: "",
   contextWindow: 128000,
   compactAtTokens: 96000,
@@ -69,6 +91,7 @@ export const DEFAULT_V2_SETTINGS: V2AppSettings = {
     review_fix: "high",
     tool_invoke: "medium",
   },
+  proactivity: DEFAULT_PROACTIVITY_SETTINGS,
 };
 
 function parseJson<T>(value: unknown, fallback: T): T {
@@ -104,6 +127,14 @@ function normalizeSettings(settings?: Partial<V2AppSettings> | null): V2AppSetti
     reasoningPolicyByTask: {
       ...DEFAULT_V2_SETTINGS.reasoningPolicyByTask,
       ...(settings?.reasoningPolicyByTask ?? {}),
+    },
+    proactivity: {
+      ...DEFAULT_PROACTIVITY_SETTINGS,
+      ...(settings?.proactivity ?? {}),
+      suggestionTypes: {
+        ...DEFAULT_PROACTIVITY_SETTINGS.suggestionTypes,
+        ...(settings?.proactivity?.suggestionTypes ?? {}),
+      },
     },
   };
 }
@@ -209,7 +240,7 @@ async function ensureDefaultCoworkWorkflowsSeeded(): Promise<void> {
   }
 }
 
-type EntityKind = "agents" | "skills" | "workflows" | "mcp_servers" | "project_contexts";
+type EntityKind = "agents" | "skills" | "workflows" | "mcp_servers" | "project_contexts" | "web_recipes";
 
 async function listEntities<T>(kind: EntityKind): Promise<T[]> {
   const db = await ensureV2Db();
@@ -329,6 +360,22 @@ export async function saveProjectContextV2(projectContext: ProjectContext): Prom
 
 export async function deleteProjectContextV2(id: string): Promise<void> {
   await deleteEntity("project_contexts", id);
+}
+
+export async function listWebRecipesV2(): Promise<WebRecipe[]> {
+  return await listEntities<WebRecipe>("web_recipes");
+}
+
+export async function getWebRecipeV2(id: string): Promise<WebRecipe | null> {
+  return await getEntity<WebRecipe>("web_recipes", id);
+}
+
+export async function saveWebRecipeV2(recipe: WebRecipe): Promise<void> {
+  await saveEntity("web_recipes", recipe);
+}
+
+export async function deleteWebRecipeV2(id: string): Promise<void> {
+  await deleteEntity("web_recipes", id);
 }
 
 export async function getSettingsV2(): Promise<V2AppSettings> {

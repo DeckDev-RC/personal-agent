@@ -9,6 +9,7 @@ describe("settingsStore", () => {
     vi.restoreAllMocks();
     mockStore.getSettings = vi.fn().mockResolvedValue({});
     mockStore.saveSettings = vi.fn().mockResolvedValue(undefined);
+    document.documentElement.removeAttribute("data-theme");
     useSettingsStore.setState({
       settings: {
         provider: "openai-codex",
@@ -42,6 +43,18 @@ describe("settingsStore", () => {
           review_fix: "high",
           tool_invoke: "medium",
         },
+        proactivity: {
+          enabled: true,
+          dashboard: true,
+          chat: true,
+          frequency: "balanced",
+          suggestionTypes: {
+            tasks: true,
+            routines: true,
+            context: true,
+            communication: true,
+          },
+        },
       },
       loaded: false,
     });
@@ -57,6 +70,8 @@ describe("settingsStore", () => {
     expect(settings.reasoningEffort).toBe("medium");
     expect(settings.contextWindow).toBe(128000);
     expect(settings.maxOutputTokens).toBe(4096);
+    expect(settings.proactivity.enabled).toBe(true);
+    expect(settings.proactivity.frequency).toBe("balanced");
   });
 
   it("loads settings from API", async () => {
@@ -67,6 +82,7 @@ describe("settingsStore", () => {
     expect(settings.defaultModelRef).toBe("openai-codex/gpt-5.4-mini");
     expect(settings.language).toBe("en");
     expect(settings.provider).toBe("openai-codex");
+    expect(settings.proactivity.chat).toBe(true);
   });
 
   it("updates settings and saves to API", async () => {
@@ -90,5 +106,30 @@ describe("settingsStore", () => {
       await useSettingsStore.getState().updateSettings({ language: lang });
       expect(useSettingsStore.getState().settings.language).toBe(lang);
     }
+  });
+
+  it("merges proactivity defaults for legacy payloads", async () => {
+    mockStore.getSettings.mockResolvedValueOnce({
+      proactivity: {
+        enabled: false,
+      },
+    });
+
+    await useSettingsStore.getState().loadSettings();
+    const { settings } = useSettingsStore.getState();
+    expect(settings.proactivity.enabled).toBe(false);
+    expect(settings.proactivity.dashboard).toBe(true);
+    expect(settings.proactivity.suggestionTypes.communication).toBe(true);
+  });
+
+  it("applies light theme to the DOM", async () => {
+    await useSettingsStore.getState().updateSettings({ themeMode: "light" });
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+  });
+
+  it("clears explicit theme attribute for dark mode", async () => {
+    document.documentElement.setAttribute("data-theme", "light");
+    await useSettingsStore.getState().updateSettings({ themeMode: "dark" });
+    expect(document.documentElement.hasAttribute("data-theme")).toBe(false);
   });
 });

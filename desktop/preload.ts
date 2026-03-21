@@ -131,6 +131,10 @@ contextBridge.exposeInMainWorld("codexAgent", {
     suggest: (args: { prompt: string; currentAgentId?: string }) => ipcRenderer.invoke("agents:suggest", args),
   },
 
+  proactive: {
+    suggestions: (args: any) => ipcRenderer.invoke("proactive:suggestions", args),
+  },
+
   // MCP runtime
   mcp: {
     connect: (config: any) => ipcRenderer.invoke("mcp:connect", config),
@@ -212,9 +216,39 @@ contextBridge.exposeInMainWorld("codexAgent", {
     reset: (sessionId: string) => ipcRenderer.invoke("browser:reset", sessionId),
   },
 
+  recipes: {
+    list: () => ipcRenderer.invoke("recipes:list"),
+    get: (recipeId: string) => ipcRenderer.invoke("recipes:get", recipeId),
+    save: (recipe: any) => ipcRenderer.invoke("recipes:save", recipe),
+    delete: (recipeId: string) => ipcRenderer.invoke("recipes:delete", recipeId),
+    run: (args: { recipeId: string; sessionId?: string }) => ipcRenderer.invoke("recipes:run", args),
+    listRecordings: () => ipcRenderer.invoke("recipes:recordings:list"),
+    startRecording: (args?: { sessionId?: string; recipeId?: string }) =>
+      ipcRenderer.invoke("recipes:recordings:start", args),
+    stopRecording: (args: {
+      recordingId: string;
+      persist?: boolean;
+      name?: string;
+      description?: string;
+      tags?: string[];
+    }) => ipcRenderer.invoke("recipes:recordings:stop", args),
+  },
+
   memory: {
     search: (args: { sessionId?: string; query: string; limit?: number }) => ipcRenderer.invoke("memory:search", args),
     status: (sessionId: string) => ipcRenderer.invoke("memory:status", sessionId),
+  },
+
+  knowledge: {
+    status: () => ipcRenderer.invoke("knowledge:status"),
+    sync: () => ipcRenderer.invoke("knowledge:sync"),
+    search: (args: {
+      query: string;
+      limit?: number;
+      sourceTypes?: string[];
+      sessionId?: string;
+      projectContextId?: string;
+    }) => ipcRenderer.invoke("knowledge:search", args),
   },
 
   jobs: {
@@ -243,5 +277,52 @@ contextBridge.exposeInMainWorld("codexAgent", {
 
   capabilities: {
     list: (args?: { mcpServerIds?: string[]; sessionId?: string }) => ipcRenderer.invoke("capabilities:list", args),
+  },
+
+  // Communication Hub (Drafts)
+  drafts: {
+    list: (args?: { status?: string; type?: string; projectContextId?: string }) =>
+      ipcRenderer.invoke("drafts:list", args),
+    get: (draftId: string) => ipcRenderer.invoke("drafts:get", draftId),
+    create: (draft: any) => ipcRenderer.invoke("drafts:create", draft),
+    update: (draftId: string, patch: any) => ipcRenderer.invoke("drafts:update", draftId, patch),
+    send: (draftId: string) => ipcRenderer.invoke("drafts:send", draftId),
+    delete: (draftId: string) => ipcRenderer.invoke("drafts:delete", draftId),
+  },
+
+  // Analytics
+  analytics: {
+    events: (args?: { eventType?: string; since?: number; until?: number; limit?: number }) =>
+      ipcRenderer.invoke("analytics:events", args),
+    track: (eventType: string, metadata?: Record<string, unknown>) =>
+      ipcRenderer.invoke("analytics:track", { eventType, metadata }),
+    weeklyReport: (weekStart?: number) => ipcRenderer.invoke("analytics:weeklyReport", weekStart),
+  },
+
+  // Feedback & Persona
+  feedback: {
+    submit: (args: { messageId: string; sessionId: string; rating: string; comment?: string }) =>
+      ipcRenderer.invoke("feedback:submit", args),
+    list: (args?: { sessionId?: string; rating?: string; limit?: number }) =>
+      ipcRenderer.invoke("feedback:list", args),
+    stats: () => ipcRenderer.invoke("feedback:stats"),
+    delete: (feedbackId: string) => ipcRenderer.invoke("feedback:delete", feedbackId),
+  },
+  persona: {
+    get: () => ipcRenderer.invoke("persona:get"),
+    save: (config: any) => ipcRenderer.invoke("persona:save", config),
+  },
+
+  // Sync
+  sync: {
+    getConfig: () => ipcRenderer.invoke("sync:getConfig"),
+    updateConfig: (config: any) => ipcRenderer.invoke("sync:updateConfig", config),
+    export: () => ipcRenderer.invoke("sync:export"),
+    import: () => ipcRenderer.invoke("sync:import"),
+  },
+
+  // Connectivity
+  connectivity: {
+    status: () => ipcRenderer.invoke("connectivity:status"),
   },
 });

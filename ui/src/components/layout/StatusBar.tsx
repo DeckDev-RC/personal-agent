@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Activity, Plug, ShieldCheck, ShieldX, Database } from "lucide-react";
+import { Activity, Plug, ShieldCheck, ShieldX, Database, Wifi, WifiOff } from "lucide-react";
 import Badge from "../shared/Badge";
 import { useChatStore } from "../../stores/chatStore";
 import { useRuntimeStore } from "../../stores/runtimeStore";
@@ -25,11 +25,15 @@ export default function StatusBar() {
   const compactAtTokens = useSettingsStore((state) => state.settings.compactAtTokens);
   const planMode = useSettingsStore((state) => state.settings.planMode);
   const fastMode = useSettingsStore((state) => state.settings.fastMode);
+  const [online, setOnline] = useState(true);
 
   useEffect(() => {
     refreshStatus();
     const interval = window.setInterval(() => {
       refreshStatus();
+      (window as any).codexAgent?.connectivity?.status?.().then((s: any) => {
+        if (s && typeof s.online === "boolean") setOnline(s.online);
+      }).catch(() => {});
     }, 30000);
     return () => window.clearInterval(interval);
   }, [refreshStatus]);
@@ -83,6 +87,10 @@ export default function StatusBar() {
           </Badge>
         ))}
         {status?.usageError && <Badge color="red">{status.usageError}</Badge>}
+        <div className="flex items-center gap-1.5">
+          {online ? <Wifi size={12} className="text-green-400" /> : <WifiOff size={12} className="text-red-400" />}
+          <span>{online ? t("statusBar.online", "Online") : t("statusBar.offline", "Offline")}</span>
+        </div>
         <div className="flex items-center gap-1.5">
           <Activity size={12} />
           <span>{t("statusBar.output")} {formatTokenCount(status?.maxOutputTokens ?? 4096)}</span>

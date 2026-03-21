@@ -39,6 +39,9 @@ Object.defineProperty(window, "matchMedia", {
     getSettings: async () => ({}),
     saveSettings: async () => {},
   },
+  proactive: {
+    suggestions: async () => [],
+  },
   logout: async () => ({ ok: true }),
   minimizeWindow: () => {},
   closeWindow: () => {},

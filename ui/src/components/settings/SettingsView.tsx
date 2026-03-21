@@ -8,6 +8,7 @@ import Button from "../shared/Button";
 import Input, { TextArea } from "../shared/Input";
 import Badge from "../shared/Badge";
 import Modal from "../shared/Modal";
+import Toggle from "../shared/Toggle";
 
 const PROVIDER_MODELS: Record<ProviderName, string[]> = {
   "openai-codex": [
@@ -38,6 +39,11 @@ const REASONING_OPTIONS = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
   { value: "xhigh", label: "Extra High" },
+] as const;
+const PROACTIVITY_FREQUENCIES = [
+  { value: "low", labelKey: "settings.proactivity.frequency.low" },
+  { value: "balanced", labelKey: "settings.proactivity.frequency.balanced" },
+  { value: "high", labelKey: "settings.proactivity.frequency.high" },
 ] as const;
 
 const THEME_OPTIONS: { value: ThemeMode; labelKey: string }[] = [
@@ -76,6 +82,14 @@ export default function SettingsView() {
   const [webSearchApiKey, setWebSearchApiKey] = useState(settings.webSearch.apiKey);
   const [webSearchTimeoutMs, setWebSearchTimeoutMs] = useState(String(settings.webSearch.timeoutMs));
   const [webSearchMaxResults, setWebSearchMaxResults] = useState(String(settings.webSearch.maxResults));
+  const [proactivityEnabled, setProactivityEnabled] = useState(settings.proactivity.enabled);
+  const [proactivityDashboard, setProactivityDashboard] = useState(settings.proactivity.dashboard);
+  const [proactivityChat, setProactivityChat] = useState(settings.proactivity.chat);
+  const [proactivityFrequency, setProactivityFrequency] = useState(settings.proactivity.frequency);
+  const [proactivityTasks, setProactivityTasks] = useState(settings.proactivity.suggestionTypes.tasks);
+  const [proactivityRoutines, setProactivityRoutines] = useState(settings.proactivity.suggestionTypes.routines);
+  const [proactivityContext, setProactivityContext] = useState(settings.proactivity.suggestionTypes.context);
+  const [proactivityCommunication, setProactivityCommunication] = useState(settings.proactivity.suggestionTypes.communication);
   const [anthropicApiKey, setAnthropicApiKey] = useState("");
   const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://localhost:11434");
 
@@ -108,6 +122,14 @@ export default function SettingsView() {
     setWebSearchApiKey(settings.webSearch.apiKey);
     setWebSearchTimeoutMs(String(settings.webSearch.timeoutMs));
     setWebSearchMaxResults(String(settings.webSearch.maxResults));
+    setProactivityEnabled(settings.proactivity.enabled);
+    setProactivityDashboard(settings.proactivity.dashboard);
+    setProactivityChat(settings.proactivity.chat);
+    setProactivityFrequency(settings.proactivity.frequency);
+    setProactivityTasks(settings.proactivity.suggestionTypes.tasks);
+    setProactivityRoutines(settings.proactivity.suggestionTypes.routines);
+    setProactivityContext(settings.proactivity.suggestionTypes.context);
+    setProactivityCommunication(settings.proactivity.suggestionTypes.communication);
   }, [settings]);
 
   useEffect(() => {
@@ -152,6 +174,18 @@ export default function SettingsView() {
         apiKey: webSearchApiKey.trim(),
         timeoutMs: Math.max(1000, Number(webSearchTimeoutMs) || settings.webSearch.timeoutMs),
         maxResults: Math.max(1, Number(webSearchMaxResults) || settings.webSearch.maxResults),
+      },
+      proactivity: {
+        enabled: proactivityEnabled,
+        dashboard: proactivityDashboard,
+        chat: proactivityChat,
+        frequency: proactivityFrequency,
+        suggestionTypes: {
+          tasks: proactivityTasks,
+          routines: proactivityRoutines,
+          context: proactivityContext,
+          communication: proactivityCommunication,
+        },
       },
     });
     await refreshStatus();
@@ -460,6 +494,82 @@ export default function SettingsView() {
             placeholder="5"
             inputMode="numeric"
           />
+        </section>
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-medium text-text-secondary">{t("settings.proactivity.title")}</h2>
+            <p className="mt-1 text-xs text-text-secondary/70">{t("settings.proactivity.description")}</p>
+          </div>
+
+          <div className="rounded-xl border border-border bg-bg-secondary/60 p-4 space-y-4">
+            <div className="flex flex-wrap gap-4">
+              <Toggle
+                checked={proactivityEnabled}
+                onChange={setProactivityEnabled}
+                label={t("settings.proactivity.enabled")}
+              />
+              <Toggle
+                checked={proactivityDashboard}
+                onChange={setProactivityDashboard}
+                label={t("settings.proactivity.dashboard")}
+                disabled={!proactivityEnabled}
+              />
+              <Toggle
+                checked={proactivityChat}
+                onChange={setProactivityChat}
+                label={t("settings.proactivity.chat")}
+                disabled={!proactivityEnabled}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-text-secondary">{t("settings.proactivity.frequency.label")}</div>
+              <div className="flex flex-wrap gap-2">
+                {PROACTIVITY_FREQUENCIES.map((option) => (
+                  <Button
+                    key={option.value}
+                    variant={proactivityFrequency === option.value ? "primary" : "secondary"}
+                    size="sm"
+                    onClick={() => setProactivityFrequency(option.value)}
+                    disabled={!proactivityEnabled}
+                  >
+                    {t(option.labelKey)}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-xs font-medium text-text-secondary">{t("settings.proactivity.types.label")}</div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Toggle
+                  checked={proactivityTasks}
+                  onChange={setProactivityTasks}
+                  label={t("settings.proactivity.types.tasks")}
+                  disabled={!proactivityEnabled}
+                />
+                <Toggle
+                  checked={proactivityRoutines}
+                  onChange={setProactivityRoutines}
+                  label={t("settings.proactivity.types.routines")}
+                  disabled={!proactivityEnabled}
+                />
+                <Toggle
+                  checked={proactivityContext}
+                  onChange={setProactivityContext}
+                  label={t("settings.proactivity.types.context")}
+                  disabled={!proactivityEnabled}
+                />
+                <Toggle
+                  checked={proactivityCommunication}
+                  onChange={setProactivityCommunication}
+                  label={t("settings.proactivity.types.communication")}
+                  disabled={!proactivityEnabled}
+                />
+              </div>
+            </div>
+          </div>
         </section>
 
         <section className="space-y-3">

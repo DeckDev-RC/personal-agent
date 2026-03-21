@@ -1,14 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  CalendarClock,
+  CheckSquare2,
   FolderOpen,
+  GitBranch,
   LayoutDashboard,
+  MessageSquareQuote,
   Plug,
   RefreshCw,
   SendHorizonal,
   Sparkles,
 } from "lucide-react";
 import type { McpServerStatus } from "../../../../src/types/mcp.js";
+import type { ProactiveSuggestion } from "../../../../src/types/proactive.js";
 import AgendaWidget from "./AgendaWidget";
 import RecentActivity from "./RecentActivity";
 import TasksWidget from "./TasksWidget";
@@ -43,6 +48,34 @@ function connectedStatuses(statuses: McpServerStatus[]): McpServerStatus[] {
   return statuses.filter((status) => status.connected).slice(0, 6);
 }
 
+function iconForSuggestion(type: ProactiveSuggestion["type"]) {
+  switch (type) {
+    case "tasks":
+      return CheckSquare2;
+    case "workflow":
+      return GitBranch;
+    case "agenda":
+      return CalendarClock;
+    case "communication":
+      return MessageSquareQuote;
+    default:
+      return Sparkles;
+  }
+}
+
+function badgeColorForPriority(priority: ProactiveSuggestion["priority"]): "gray" | "blue" | "orange" | "red" {
+  switch (priority) {
+    case "high":
+      return "red";
+    case "medium":
+      return "orange";
+    case "low":
+      return "gray";
+    default:
+      return "blue";
+  }
+}
+
 export default function DayView() {
   const { t } = useTranslation();
   const {
@@ -74,6 +107,7 @@ export default function DayView() {
 
   const [quickPrompt, setQuickPrompt] = useState("");
   const [sendingQuickPrompt, setSendingQuickPrompt] = useState(false);
+  const [proactiveSuggestions, setProactiveSuggestions] = useState<ProactiveSuggestion[]>([]);
 
   useEffect(() => {
     if (!loaded && !loading) {
@@ -101,8 +135,8 @@ export default function DayView() {
   const connectedCatalogIds = getConnectedCatalogIds();
   const calendarConnected = connectedCatalogIds.includes("google-calendar");
 
-  const handleQuickPrompt = useCallback(async () => {
-    const prompt = quickPrompt.trim();
+  const runQuickPrompt = useCallback(async (promptValue: string) => {
+    const prompt = promptValue.trim();
     if (!prompt || sendingQuickPrompt) {
       return;
     }
@@ -162,7 +196,6 @@ export default function DayView() {
     createConversation,
     errorStreaming,
     loadConversations,
-    quickPrompt,
     sendingQuickPrompt,
     settings.defaultModelRef,
     settings.fastMode,
@@ -170,6 +203,61 @@ export default function DayView() {
     setUiMode,
     startStreaming,
   ]);
+
+  const handleQuickPrompt = useCallback(async () => {
+    await runQuickPrompt(quickPrompt);
+  }, [quickPrompt, runQuickPrompt]);
+
+  useEffect(() => {
+    if (!loaded || !settings.proactivity.enabled || !settings.proactivity.dashboard) {
+      setProactiveSuggestions([]);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const suggestions = await api().proactive.suggestions({
+          surface: "dashboard",
+          activeContextId: activeContextId || undefined,
+          manualAgenda,
+        });
+        if (!cancelled) {
+          setProactiveSuggestions(Array.isArray(suggestions) ? (suggestions as ProactiveSuggestion[]) : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setProactiveSuggestions([]);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeContextId, loaded, manualAgenda, settings.proactivity]);
+
+  const handleDashboardSuggestion = useCallback(
+    async (suggestion: ProactiveSuggestion) => {
+      if (suggestion.action.kind === "navigate") {
+        setRoute(suggestion.action.view, suggestion.action.param);
+        return;
+      }
+
+      const mode = suggestion.action.mode ?? "new_chat";
+      if (mode === "replace_draft" || mode === "append_draft") {
+        setQuickPrompt((current) =>
+          mode === "append_draft" && current.trim()
+            ? `${current.trim()}\n\n${suggestion.action.prompt}`
+            : suggestion.action.prompt,
+        );
+        return;
+      }
+
+      await runQuickPrompt(suggestion.action.prompt);
+    },
+    [runQuickPrompt],
+  );
 
   if (!loaded && loading) {
     return (
@@ -298,6 +386,62 @@ export default function DayView() {
             </div>
           </div>
         </section>
+
+        {proactiveSuggestions.length > 0 && (
+          <section className="rounded-2xl border border-border bg-bg-secondary/70 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+                  <Sparkles size={16} className="text-accent-orange" />
+                  {t("dashboard.proactive.title")}
+                </div>
+                <p className="mt-1 text-xs text-text-secondary/70">
+                  {t("dashboard.proactive.description")}
+                </p>
+              </div>
+              <Badge color="blue">{proactiveSuggestions.length}</Badge>
+            </div>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              {proactiveSuggestions.map((suggestion) => {
+                const Icon = iconForSuggestion(suggestion.type);
+                return (
+                  <button
+                    key={suggestion.id}
+                    type="button"
+                    onClick={() => void handleDashboardSuggestion(suggestion)}
+                    className="rounded-2xl border border-border bg-bg-primary/80 p-4 text-left transition-colors hover:bg-white/5 cursor-pointer"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2 text-xs font-medium text-text-primary">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent-blue/10 text-accent-blue">
+                          <Icon size={15} />
+                        </div>
+                        <span>{suggestion.label}</span>
+                      </div>
+                      <Badge color={badgeColorForPriority(suggestion.priority)}>
+                        {t(`dashboard.proactive.priority.${suggestion.priority}`)}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 text-sm font-semibold text-text-primary">
+                      {suggestion.title}
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-text-secondary/70">
+                      {suggestion.description}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {suggestion.reasonTags.slice(0, 3).map((reason) => (
+                        <Badge key={reason} color="gray">
+                          {reason}
+                        </Badge>
+                      ))}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr),minmax(360px,0.95fr)]">
           <div className="space-y-6">

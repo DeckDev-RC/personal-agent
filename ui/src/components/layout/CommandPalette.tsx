@@ -1,45 +1,25 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { RouteView } from "../../router";
+import { setRoute } from "../../router";
+import { DEFAULT_AGENT, useAgentStore, type AgentConfig } from "../../stores/agentStore";
+import { useChatStore } from "../../stores/chatStore";
+import { useContextStore } from "../../stores/contextStore";
+import { useKnowledgeStore } from "../../stores/knowledgeStore";
+import { useSettingsStore } from "../../stores/settingsStore";
+import { useSkillStore, type Skill } from "../../stores/skillStore";
+import { useTaskStore } from "../../stores/taskStore";
+import { useWorkflowStore } from "../../stores/workflowStore";
 import {
-  LayoutDashboard,
-  MessageSquare,
-  FolderTree,
-  FileStack,
-  Bot,
-  Zap,
-  GitBranch,
-  Plug,
-  Settings,
-  Languages,
-} from "lucide-react";
+  buildCommandRegistry,
+  scoreCommand,
+  type CommandPaletteCommand,
+} from "../../services/commandRegistry";
 import type { NavView } from "./Sidebar";
 
-type Command = {
-  id: string;
-  label: string;
-  icon: React.ElementType;
-  action: () => void;
-};
-
-function scoreCommand(label: string, query: string): number {
-  const normalizedLabel = label.toLowerCase();
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return 1;
-  if (normalizedLabel === normalizedQuery) return 1000;
-  if (normalizedLabel.startsWith(normalizedQuery)) return 700 - normalizedLabel.length;
-  const substringIndex = normalizedLabel.indexOf(normalizedQuery);
-  if (substringIndex >= 0) return 500 - substringIndex;
-
-  let score = 0;
-  let cursor = 0;
-  for (const char of normalizedQuery) {
-    const index = normalizedLabel.indexOf(char, cursor);
-    if (index === -1) return 0;
-    score += index === cursor ? 20 : 8;
-    cursor = index + 1;
-  }
-
-  return score;
+function normalizeEmbeddedPrompt(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.replace(/^---\s*\n*/i, "").trim();
 }
 
 type CommandPaletteProps = {
@@ -58,152 +38,335 @@ export default function CommandPalette({
   onSwitchLanguage,
 }: CommandPaletteProps) {
   const { t } = useTranslation();
-  const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState("");
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [executingId, setExecutingId] = useState<string | null>(null);
 
-  const commands: Command[] = useMemo(
-    () => [
-      {
-        id: "today",
-        label: t("commandPalette.openToday"),
-        icon: LayoutDashboard,
-        action: () => { onNavigate("today"); onClose(); },
-      },
-      {
-        id: "new-chat",
-        label: t("commandPalette.newChat"),
-        icon: MessageSquare,
-        action: () => { onNewChat(); onClose(); },
-      },
-      {
-        id: "workspace",
-        label: t("commandPalette.openWorkspace"),
-        icon: FolderTree,
-        action: () => { onNavigate("workspace"); onClose(); },
-      },
-      {
-        id: "documents",
-        label: t("commandPalette.openDocuments"),
-        icon: FileStack,
-        action: () => { onNavigate("documents"); onClose(); },
-      },
-      {
-        id: "agents",
-        label: t("commandPalette.createAgent"),
-        icon: Bot,
-        action: () => { onNavigate("agents"); onClose(); },
-      },
-      {
-        id: "skills",
-        label: t("commandPalette.createSkill"),
-        icon: Zap,
-        action: () => { onNavigate("skills"); onClose(); },
-      },
-      {
-        id: "workflows",
-        label: t("commandPalette.createWorkflow"),
-        icon: GitBranch,
-        action: () => { onNavigate("workflows"); onClose(); },
-      },
-      {
-        id: "mcp",
-        label: t("commandPalette.addMcp"),
-        icon: Plug,
-        action: () => { onNavigate("mcp"); onClose(); },
-      },
-      {
-        id: "settings",
-        label: t("commandPalette.openSettings"),
-        icon: Settings,
-        action: () => { onNavigate("settings"); onClose(); },
-      },
-      {
-        id: "language",
-        label: t("commandPalette.switchLanguage"),
-        icon: Languages,
-        action: () => { onSwitchLanguage(); onClose(); },
-      },
+  const settings = useSettingsStore((state) => state.settings);
+
+  const { agents, loaded: agentsLoaded, loadAgents } = useAgentStore();
+  const { skills, loaded: skillsLoaded, loadSkills, buildSkillsPrompt } = useSkillStore();
+  const { workflows, loaded: workflowsLoaded, loadWorkflows, runWorkflow } = useWorkflowStore();
+  const { conversations, loadConversations, createConversation } = useChatStore();
+  const {
+    contexts,
+    loaded: contextsLoaded,
+    loadContexts,
+    activeContextId,
+    setActiveContextId,
+  } = useContextStore();
+  const createTask = useTaskStore((state) => state.createTask);
+  const searchKnowledge = useKnowledgeStore((state) => state.search);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    setQuery("");
+    setSelectedIdx(0);
+    window.setTimeout(() => inputRef.current?.focus(), 40);
+
+    if (!agentsLoaded) {
+      void loadAgents();
+    }
+    if (!skillsLoaded) {
+      void loadSkills();
+    }
+    if (!workflowsLoaded) {
+      void loadWorkflows();
+    }
+    if (!contextsLoaded) {
+      void loadContexts();
+    }
+    void loadConversations();
+  }, [
+    agentsLoaded,
+    contextsLoaded,
+    loadAgents,
+    loadContexts,
+    loadConversations,
+    loadSkills,
+    loadWorkflows,
+    open,
+    skillsLoaded,
+    workflowsLoaded,
+  ]);
+
+  function navigate(view: RouteView, param?: string) {
+    if (param) {
+      setRoute(view, param);
+      return;
+    }
+    onNavigate(view as NavView);
+  }
+
+  function buildAgentSystemPrompt(agent: AgentConfig): string {
+    const parts = [agent.systemPrompt];
+
+    if (settings.globalSystemPrompt.trim()) {
+      parts.push(`Global instructions:\n${settings.globalSystemPrompt.trim()}`);
+    }
+
+    if (settings.fastMode) {
+      parts.push("Fast mode is enabled. Prefer lower latency and concise execution.");
+    }
+
+    const skillsPrompt = normalizeEmbeddedPrompt(buildSkillsPrompt(agent.skillIds));
+    if (skillsPrompt) {
+      parts.push(skillsPrompt);
+    }
+
+    return parts.join("\n\n---\n\n");
+  }
+
+  function buildSkillSystemPrompt(skill: Skill): string {
+    const parts = [DEFAULT_AGENT.systemPrompt];
+
+    if (settings.globalSystemPrompt.trim()) {
+      parts.push(`Global instructions:\n${settings.globalSystemPrompt.trim()}`);
+    }
+
+    if (settings.fastMode) {
+      parts.push("Fast mode is enabled. Prefer lower latency and concise execution.");
+    }
+
+    parts.push(`## Skill: ${skill.name}\n${skill.content.trim()}`);
+
+    return parts.join("\n\n---\n\n");
+  }
+
+  function startAgentChat(agent: AgentConfig) {
+    const projectContextId = activeContextId || agent.projectContextId || "";
+    if (projectContextId) {
+      setActiveContextId(projectContextId);
+    }
+
+    createConversation(
+      agent.model || settings.defaultModelRef,
+      buildAgentSystemPrompt(agent),
+      agent.id,
+      projectContextId || undefined,
+    );
+    navigate("chat");
+  }
+
+  function startSkillChat(skill: Skill) {
+    createConversation(
+      settings.defaultModelRef,
+      buildSkillSystemPrompt(skill),
+      DEFAULT_AGENT.id,
+      activeContextId || undefined,
+    );
+    navigate("chat");
+  }
+
+  const commands = useMemo(
+    () =>
+      buildCommandRegistry({
+        t,
+        query,
+        agents: [DEFAULT_AGENT, ...agents],
+        skills,
+        workflows,
+        contexts,
+        conversations,
+        settings,
+        activeContextId,
+        navigate,
+        startNewChat: onNewChat,
+        switchLanguage: onSwitchLanguage,
+        startAgentChat,
+        startSkillChat,
+        activateContext: (contextId) => {
+          setActiveContextId(contextId);
+        },
+        runWorkflow: async (workflowId) => {
+          await runWorkflow(workflowId);
+          navigate("workflows");
+        },
+        searchKnowledge: async (nextQuery) => {
+          await searchKnowledge({
+            query: nextQuery,
+            limit: 16,
+            projectContextId: activeContextId || undefined,
+          });
+          navigate("knowledge");
+        },
+        createTask: async (title) => {
+          await createTask({
+            title,
+            status: "backlog",
+            projectContextId: activeContextId || undefined,
+            source: "command-palette",
+          });
+          navigate("tasks");
+        },
+        openSession: (sessionId) => {
+          navigate("chat", sessionId);
+        },
+      }),
+    [
+      activeContextId,
+      agents,
+      contexts,
+      conversations,
+      createTask,
+      createConversation,
+      onNewChat,
+      onSwitchLanguage,
+      query,
+      runWorkflow,
+      searchKnowledge,
+      settings,
+      skills,
+      startAgentChat,
+      workflows,
+      t,
     ],
-    [t, onNavigate, onNewChat, onSwitchLanguage, onClose],
   );
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return commands;
+    if (!query.trim()) {
+      return commands;
+    }
+
     return commands
       .map((command) => ({
         command,
-        score: scoreCommand(command.label, query),
+        score: scoreCommand(command, query),
       }))
       .filter((entry) => entry.score > 0)
-      .sort((a, b) => b.score - a.score || a.command.label.localeCompare(b.command.label))
+      .sort((left, right) => right.score - left.score || left.command.label.localeCompare(right.command.label))
       .map((entry) => entry.command);
-  }, [query, commands]);
-
-  const [selectedIdx, setSelectedIdx] = useState(0);
-
-  useEffect(() => {
-    if (open) {
-      setQuery("");
-      setSelectedIdx(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  }, [open]);
+  }, [commands, query]);
 
   useEffect(() => {
     setSelectedIdx(0);
-  }, [filtered.length]);
+  }, [filtered.length, query]);
 
   useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+    if (!open || !listRef.current) {
+      return;
+    }
+
+    const items = listRef.current.querySelectorAll("[data-command-item]");
+    items[selectedIdx]?.scrollIntoView({ block: "nearest" });
+  }, [open, selectedIdx]);
+
+  async function executeCommand(command: CommandPaletteCommand) {
+    setExecutingId(command.id);
+    onClose();
+
+    try {
+      await command.action();
+    } finally {
+      setExecutingId(null);
+    }
+  }
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
         onClose();
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedIdx((i) => Math.min(i + 1, filtered.length - 1));
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedIdx((i) => Math.max(i - 1, 0));
-      } else if (e.key === "Enter" && filtered[selectedIdx]) {
-        filtered[selectedIdx].action();
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setSelectedIdx((current) => Math.min(current + 1, Math.max(filtered.length - 1, 0)));
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setSelectedIdx((current) => Math.max(current - 1, 0));
+        return;
+      }
+
+      if (event.key === "Enter" && filtered[selectedIdx]) {
+        event.preventDefault();
+        void executeCommand(filtered[selectedIdx]);
       }
     };
+
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose, filtered, selectedIdx]);
+  }, [filtered, onClose, open, selectedIdx]);
 
-  if (!open) return null;
+  if (!open) {
+    return null;
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full max-w-md mx-4 rounded-xl border border-border bg-bg-secondary shadow-2xl overflow-hidden">
-        <input
-          ref={inputRef}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t("commandPalette.placeholder")}
-          className="w-full px-4 py-3 bg-transparent text-sm text-text-primary placeholder-text-secondary/50 outline-none border-b border-border"
-        />
-        <div className="max-h-64 overflow-y-auto py-1">
-          {filtered.map((cmd, idx) => (
-            <button
-              key={cmd.id}
-              onClick={cmd.action}
-              className={`flex items-center gap-3 w-full px-4 py-2 text-xs cursor-pointer transition-colors ${
-                idx === selectedIdx
-                  ? "bg-white/8 text-text-primary"
-                  : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
-              }`}
-            >
-              <cmd.icon size={14} className="shrink-0" />
-              <span>{cmd.label}</span>
-            </button>
-          ))}
-          {filtered.length === 0 && (
-            <div className="px-4 py-3 text-xs text-text-secondary">
-              {t("common.noResults")}
-            </div>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[14vh]">
+      <div className="absolute inset-0 bg-black/55" onClick={onClose} />
+
+      <div className="relative mx-4 w-full max-w-3xl overflow-hidden rounded-2xl border border-border bg-bg-secondary shadow-2xl">
+        <div className="border-b border-border px-4 py-3">
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={t(
+              "commandPalette.placeholder",
+              "Buscar acoes, skills, workflows, agentes, contextos ou digite um texto para criar task/busca...",
+            )}
+            className="w-full bg-transparent text-sm text-text-primary placeholder-text-secondary/50 outline-none"
+          />
+          <div className="mt-2 text-[11px] text-text-secondary/60">
+            {t(
+              "commandPalette.hint",
+              "Enter executa. Use o texto digitado para buscar na base ou criar uma tarefa rapidamente.",
+            )}
+          </div>
+        </div>
+
+        <div ref={listRef} className="max-h-[70vh] overflow-y-auto py-2">
+          {filtered.length === 0 ? (
+            <div className="px-4 py-6 text-sm text-text-secondary">{t("common.noResults")}</div>
+          ) : (
+            filtered.map((command, index) => {
+              const selected = index === selectedIdx;
+              const busy = executingId === command.id;
+
+              return (
+                <button
+                  key={command.id}
+                  type="button"
+                  data-command-item
+                  disabled={Boolean(executingId)}
+                  onClick={() => void executeCommand(command)}
+                  className={`flex w-full items-start gap-3 px-4 py-3 text-left transition-colors cursor-pointer ${
+                    selected
+                      ? "bg-white/8 text-text-primary"
+                      : "text-text-secondary hover:bg-white/5 hover:text-text-primary"
+                  } ${executingId && !busy ? "opacity-60" : ""}`}
+                >
+                  <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/5">
+                    <command.icon size={15} />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium text-text-primary">{command.label}</span>
+                      <span className="rounded-full border border-border bg-bg-primary px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-text-secondary/60">
+                        {command.group}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs leading-relaxed text-text-secondary/70">
+                      {command.description}
+                    </div>
+                  </div>
+                </button>
+              );
+            })
           )}
         </div>
       </div>

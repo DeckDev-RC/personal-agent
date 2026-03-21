@@ -22,12 +22,15 @@ import { useChatStore } from "../../stores/chatStore";
 import { useContextStore } from "../../stores/contextStore";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useSkillStore } from "../../stores/skillStore";
+import { setRoute } from "../../router";
 import Badge from "../shared/Badge";
 import Button from "../shared/Button";
 import ContextSelector from "../context/ContextSelector";
 import ChatInput, { type ChatAgentSuggestion, type PendingAttachment } from "./ChatInput";
 import ConversationList from "./ConversationList";
 import MessageList from "./MessageList";
+import SuggestionChips from "./SuggestionChips";
+import type { ProactiveSuggestion } from "../../../../src/types/proactive.js";
 
 const api = () => (window as any).codexAgent;
 
@@ -213,6 +216,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
   const [draftMessage, setDraftMessage] = useState("");
   const [agentSuggestion, setAgentSuggestion] = useState<ChatAgentSuggestion | null>(null);
   const [dismissedSuggestionKey, setDismissedSuggestionKey] = useState("");
+  const [proactiveSuggestions, setProactiveSuggestions] = useState<ProactiveSuggestion[]>([]);
 
   useEffect(() => {
     if (!agentsLoaded) void loadAgents();
@@ -296,6 +300,69 @@ export default function ChatView({ sessionId }: ChatViewProps) {
       window.clearTimeout(timeout);
     };
   }, [dismissedSuggestionKey, draftMessage, draftSuggestionKey, selectedAgentId, streaming]);
+
+  const proactiveMessages = useMemo(
+    () =>
+      (activeConversation?.messages ?? []).slice(-8).map((message) => ({
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp,
+        toolName: message.toolName,
+        phase: message.phase,
+      })),
+    [activeConversation?.messages],
+  );
+
+  useEffect(() => {
+    if (streaming || !settings.proactivity.enabled || !settings.proactivity.chat) {
+      setProactiveSuggestions([]);
+      return;
+    }
+
+    if (!draftMessage.trim() && proactiveMessages.length === 0) {
+      setProactiveSuggestions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const timeout = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const suggestions = await api().proactive.suggestions({
+            surface: "chat",
+            currentAgentId: selectedAgentId,
+            projectContextId:
+              selectedContextId ||
+              activeConversation?.projectContextId ||
+              undefined,
+            draft: draftMessage,
+            messages: proactiveMessages,
+          });
+
+          if (!cancelled) {
+            setProactiveSuggestions(Array.isArray(suggestions) ? (suggestions as ProactiveSuggestion[]) : []);
+          }
+        } catch {
+          if (!cancelled) {
+            setProactiveSuggestions([]);
+          }
+        }
+      })();
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [
+    activeConversation?.projectContextId,
+    draftMessage,
+    proactiveMessages,
+    selectedAgentId,
+    selectedContextId,
+    settings.proactivity,
+    streaming,
+  ]);
 
   const refreshSessionDetails = useCallback(async (sessionId?: string) => {
     if (!sessionId || sessionId.startsWith("draft-")) return;
@@ -621,6 +688,36 @@ export default function ChatView({ sessionId }: ChatViewProps) {
     startStreaming,
   ]);
 
+  const handleSelectProactiveSuggestion = useCallback(
+    async (suggestion: ProactiveSuggestion) => {
+      if (suggestion.action.kind === "navigate") {
+        setRoute(suggestion.action.view, suggestion.action.param);
+        return;
+      }
+
+      const mode = suggestion.action.mode ?? "replace_draft";
+      if (mode === "append_draft") {
+        setDraftMessage((current) =>
+          current.trim()
+            ? `${current.trim()}\n\n${suggestion.action.prompt}`
+            : suggestion.action.prompt,
+        );
+        return;
+      }
+
+      if (mode === "replace_draft") {
+        setDraftMessage(suggestion.action.prompt);
+        return;
+      }
+
+      await handleSend({
+        message: suggestion.action.prompt,
+        attachments: [],
+      });
+    },
+    [handleSend],
+  );
+
   const handleWorkspaceSave = useCallback(async () => {
     if (!activeConversation || activeConversation.id.startsWith("draft-")) {
       return;
@@ -824,11 +921,18 @@ export default function ChatView({ sessionId }: ChatViewProps) {
                 />
               </div>
               <div className="border-t border-border bg-bg-primary/92">
+                <div className="px-5 pt-3">
+                  <SuggestionChips
+                    suggestions={proactiveSuggestions}
+                    onSelect={(suggestion) => void handleSelectProactiveSuggestion(suggestion)}
+                  />
+                </div>
                 <ChatInput
                   onSend={(message) => void handleSend(message)}
                   onAbort={abortStreaming}
                   disabled={!canRunSelectedModel || streaming}
                   streaming={streaming}
+                  draftValue={draftMessage}
                   onDraftChange={setDraftMessage}
                   agentSuggestion={agentSuggestion}
                   onApplyAgentSuggestion={handleApplySuggestedAgent}

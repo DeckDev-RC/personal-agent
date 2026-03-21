@@ -6,6 +6,7 @@
     "today": "Today",
     "chat": "Chat",
     "notifications": "Notifications",
+    "browser": "Browser",
     "workspace": "Workspace",
     "documents": "Documents",
     "agents": "Agents",
@@ -60,6 +61,9 @@
         "technical": "technical work",
         "generic": "this request"
       }
+    },
+    "suggestionChips": {
+      "title": "Contextual suggestions"
     },
     "console": {
       "sessionsTitle": "Sessions",
@@ -344,6 +348,15 @@
       "manage": "Manage MCPs",
       "ready": "ready",
       "error": "alert"
+    },
+    "proactive": {
+      "title": "Proactive suggestions",
+      "description": "Contextual shortcuts based on tasks, active context, daily routine, and connected tools.",
+      "priority": {
+        "low": "light",
+        "medium": "medium",
+        "high": "high"
+      }
     }
   },
   "skills": {
@@ -429,6 +442,26 @@
     "webSearchApiKey": "Web search API key",
     "webSearchTimeout": "Web search timeout (ms)",
     "webSearchMaxResults": "Web search max results",
+    "proactivity": {
+      "title": "Proactivity",
+      "description": "Controls when the agent suggests next steps on the dashboard and above the chat input.",
+      "enabled": "Enable contextual suggestions",
+      "dashboard": "Show on dashboard",
+      "chat": "Show in chat",
+      "frequency": {
+        "label": "Frequency",
+        "low": "Low",
+        "balanced": "Balanced",
+        "high": "High"
+      },
+      "types": {
+        "label": "Suggestion types",
+        "tasks": "Tasks and prioritization",
+        "routines": "Routines and agenda",
+        "context": "Project context",
+        "communication": "Communication"
+      }
+    },
     "shortcuts": "Shortcuts",
     "renderer": "Renderer",
     "rendererHelp": "Native terminal-style renderer enabled. `@xterm/xterm` was intentionally not adopted to keep markdown, panels and streaming UI lightweight inside the hybrid shell.",
@@ -479,6 +512,7 @@
     "openToday": "Open Today",
     "newChat": "New conversation",
     "openWorkspace": "Open workspace",
+    "openBrowser": "Open web recipes",
     "openDocuments": "Open documents",
     "createAgent": "Create agent",
     "createSkill": "Create skill",

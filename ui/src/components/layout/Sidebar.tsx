@@ -4,6 +4,7 @@ import {
   BellRing,
   LayoutDashboard,
   MessageSquare,
+  Search,
   FolderTree,
   FileStack,
   Bot,
@@ -11,6 +12,7 @@ import {
   ListTodo,
   Zap,
   GitBranch,
+  Globe,
   Plug,
   Settings,
   PanelLeftClose,
@@ -18,6 +20,7 @@ import {
   X,
   BarChart3,
   ScrollText,
+  Mail,
 } from "lucide-react";
 import QuickActions from "../skills/QuickActions";
 
@@ -25,8 +28,10 @@ export type NavView =
   | "today"
   | "chat"
   | "notifications"
+  | "browser"
   | "workspace"
   | "documents"
+  | "knowledge"
   | "agents"
   | "contexts"
   | "tasks"
@@ -35,7 +40,8 @@ export type NavView =
   | "mcp"
   | "analytics"
   | "logs"
-  | "settings";
+  | "settings"
+  | "communication";
 
 type SidebarProps = {
   open: boolean;
@@ -44,25 +50,28 @@ type SidebarProps = {
   onNavigate: (view: NavView) => void;
 };
 
-type NavItem = { view: NavView; icon: React.ElementType; labelKey: string };
+type NavItem = { view: NavView; icon: React.ElementType; labelKey: string; fallbackLabel: string };
 
 const chatItems: NavItem[] = [
-  { view: "today", icon: LayoutDashboard, labelKey: "nav.today" },
-  { view: "chat", icon: MessageSquare, labelKey: "nav.chat" },
-  { view: "notifications", icon: BellRing, labelKey: "nav.notifications" },
+  { view: "today", icon: LayoutDashboard, labelKey: "nav.today", fallbackLabel: "Hoje" },
+  { view: "chat", icon: MessageSquare, labelKey: "nav.chat", fallbackLabel: "Chat" },
+  { view: "notifications", icon: BellRing, labelKey: "nav.notifications", fallbackLabel: "Notificacoes" },
 ];
 
 const managementItems: NavItem[] = [
-  { view: "workspace", icon: FolderTree, labelKey: "nav.workspace" },
-  { view: "documents", icon: FileStack, labelKey: "nav.documents" },
-  { view: "agents", icon: Bot, labelKey: "nav.agents" },
-  { view: "contexts", icon: FolderOpen, labelKey: "nav.contexts" },
-  { view: "tasks", icon: ListTodo, labelKey: "nav.tasks" },
-  { view: "skills", icon: Zap, labelKey: "nav.skills" },
-  { view: "workflows", icon: GitBranch, labelKey: "nav.workflows" },
-  { view: "mcp", icon: Plug, labelKey: "nav.mcp" },
-  { view: "analytics", icon: BarChart3, labelKey: "nav.analytics" },
-  { view: "logs", icon: ScrollText, labelKey: "nav.logs" },
+  { view: "workspace", icon: FolderTree, labelKey: "nav.workspace", fallbackLabel: "Workspace" },
+  { view: "browser", icon: Globe, labelKey: "nav.browser", fallbackLabel: "Browser" },
+  { view: "documents", icon: FileStack, labelKey: "nav.documents", fallbackLabel: "Documentos" },
+  { view: "knowledge", icon: Search, labelKey: "nav.knowledge", fallbackLabel: "Conhecimento" },
+  { view: "agents", icon: Bot, labelKey: "nav.agents", fallbackLabel: "Agentes" },
+  { view: "contexts", icon: FolderOpen, labelKey: "nav.contexts", fallbackLabel: "Contextos" },
+  { view: "tasks", icon: ListTodo, labelKey: "nav.tasks", fallbackLabel: "Tarefas" },
+  { view: "skills", icon: Zap, labelKey: "nav.skills", fallbackLabel: "Skills" },
+  { view: "workflows", icon: GitBranch, labelKey: "nav.workflows", fallbackLabel: "Workflows" },
+  { view: "communication", icon: Mail, labelKey: "nav.communication", fallbackLabel: "Comunicação" },
+  { view: "mcp", icon: Plug, labelKey: "nav.mcp", fallbackLabel: "MCPs" },
+  { view: "analytics", icon: BarChart3, labelKey: "nav.analytics", fallbackLabel: "Analytics" },
+  { view: "logs", icon: ScrollText, labelKey: "nav.logs", fallbackLabel: "Logs" },
 ];
 
 const allNavItems: NavItem[] = [...chatItems, ...managementItems];
@@ -115,7 +124,7 @@ export default function Sidebar({ open, onToggle, activeView, onNavigate }: Side
   );
 
   const renderNavButton = (item: NavItem) => {
-    const { view, icon: Icon, labelKey } = item;
+    const { view, icon: Icon, labelKey, fallbackLabel } = item;
     const active = activeView === view;
     const showLabel = open || !isDesktop;
     return (
@@ -127,10 +136,10 @@ export default function Sidebar({ open, onToggle, activeView, onNavigate }: Side
             ? "bg-white/10 text-text-primary"
             : "text-text-secondary hover:text-text-primary hover:bg-white/5"
         }`}
-        title={!open && isDesktop ? t(labelKey) : undefined}
+        title={!open && isDesktop ? t(labelKey, fallbackLabel) : undefined}
       >
         <Icon size={16} className="shrink-0" />
-        {showLabel && <span>{t(labelKey)}</span>}
+        {showLabel && <span>{t(labelKey, fallbackLabel)}</span>}
       </button>
     );
   };
@@ -199,10 +208,10 @@ export default function Sidebar({ open, onToggle, activeView, onNavigate }: Side
               ? "bg-white/10 text-text-primary"
               : "text-text-secondary hover:text-text-primary hover:bg-white/5"
           }`}
-          title={!open && isDesktop ? t("nav.settings") : undefined}
+          title={!open && isDesktop ? t("nav.settings", "Config") : undefined}
         >
           <Settings size={16} className="shrink-0" />
-          {(open || !isDesktop) && <span>{t("nav.settings")}</span>}
+          {(open || !isDesktop) && <span>{t("nav.settings", "Config")}</span>}
         </button>
       </div>
     </div>

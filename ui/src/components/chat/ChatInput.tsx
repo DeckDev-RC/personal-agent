@@ -31,6 +31,7 @@ type ChatInputProps = {
   disabled: boolean;
   streaming: boolean;
   onSlashCommand?: (command: string) => void;
+  draftValue?: string;
   onDraftChange?: (value: string) => void;
   agentSuggestion?: ChatAgentSuggestion | null;
   onApplyAgentSuggestion?: (agentId: string) => void;
@@ -45,6 +46,7 @@ export default function ChatInput({
   disabled,
   streaming,
   onSlashCommand,
+  draftValue,
   onDraftChange,
   agentSuggestion,
   onApplyAgentSuggestion,
@@ -128,6 +130,13 @@ export default function ChatInput({
       textareaRef.current?.focus();
     }
   }, [disabled, streaming]);
+
+  useEffect(() => {
+    if (typeof draftValue !== "string" || draftValue === value) {
+      return;
+    }
+    setValue(draftValue);
+  }, [draftValue, value]);
 
   useEffect(() => {
     onDraftChange?.(value);

@@ -1,28 +1,41 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { Suspense, lazy, useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Minus, X } from "lucide-react";
 import Sidebar, { type NavView } from "./Sidebar";
 import CommandPalette from "./CommandPalette";
 import DayView from "../dashboard/DayView";
-import ChatView from "../chat/ChatView";
-import NotificationCenter from "../notifications/NotificationCenter";
-import AgentListView from "../agents/AgentListView";
-import ContextListView from "../context/ContextListView";
-import TasksView from "../tasks/TasksView";
-import SkillListView from "../skills/SkillListView";
-import McpListView from "../mcp/McpListView";
-import WorkspaceExplorer from "../workspace/WorkspaceExplorer";
-import WorkflowListView from "../workflows/WorkflowListView";
-import DocumentsView from "../documents/DocumentsView";
-import SettingsView from "../settings/SettingsView";
-import UsageView from "../analytics/UsageView";
-import LogsView from "../analytics/LogsView";
 import StatusBar from "./StatusBar";
+import Spinner from "../shared/Spinner";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useChatStore } from "../../stores/chatStore";
 import { useAuthStore } from "../../stores/authStore";
 import { useContextStore } from "../../stores/contextStore";
 import { useHashRouter } from "../../router";
+
+const ChatView = lazy(() => import("../chat/ChatView"));
+const NotificationCenter = lazy(() => import("../notifications/NotificationCenter"));
+const AgentListView = lazy(() => import("../agents/AgentListView"));
+const ContextListView = lazy(() => import("../context/ContextListView"));
+const TasksView = lazy(() => import("../tasks/TasksView"));
+const SkillListView = lazy(() => import("../skills/SkillListView"));
+const McpListView = lazy(() => import("../mcp/McpListView"));
+const WorkspaceExplorer = lazy(() => import("../workspace/WorkspaceExplorer"));
+const WorkflowListView = lazy(() => import("../workflows/WorkflowListView"));
+const DocumentsView = lazy(() => import("../documents/DocumentsView"));
+const SearchView = lazy(() => import("../knowledge/SearchView"));
+const RecipeList = lazy(() => import("../browser/RecipeList"));
+const SettingsView = lazy(() => import("../settings/SettingsView"));
+const UsageView = lazy(() => import("../analytics/UsageView"));
+const LogsView = lazy(() => import("../analytics/LogsView"));
+const DraftsList = lazy(() => import("../communication/DraftsList"));
+
+function ViewFallback() {
+  return (
+    <div className="flex flex-1 items-center justify-center">
+      <Spinner size="lg" />
+    </div>
+  );
+}
 
 export default function Shell() {
   const { t, i18n } = useTranslation();
@@ -98,8 +111,12 @@ export default function Shell() {
         return <SettingsView />;
       case "workspace":
         return <WorkspaceExplorer initialSelectedPath={routeParam ? decodeURIComponent(routeParam) : undefined} />;
+      case "browser":
+        return <RecipeList />;
       case "documents":
         return <DocumentsView />;
+      case "knowledge":
+        return <SearchView />;
       case "agents":
         return <AgentListView />;
       case "contexts":
@@ -116,6 +133,8 @@ export default function Shell() {
         return <UsageView />;
       case "logs":
         return <LogsView />;
+      case "communication":
+        return <DraftsList />;
     }
   }
 
@@ -162,7 +181,9 @@ export default function Shell() {
 
       <main className="flex-1 flex flex-col min-w-0 pt-8">
         <StatusBar />
-        {renderView()}
+        <Suspense fallback={<ViewFallback />}>
+          {renderView()}
+        </Suspense>
       </main>
 
       <CommandPalette

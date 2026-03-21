@@ -5,16 +5,43 @@ export type {
   AgentMemoryPolicy,
   AgentToolPolicy,
 } from "./agent.js";
+export type {
+  ProactiveAgendaInput,
+  ProactiveMessageInput,
+  ProactiveSuggestion,
+  ProactiveSuggestionAction,
+  ProactivitySuggestionPriority,
+  ProactiveSuggestionQuery,
+  ProactivitySuggestionType,
+  ProactiveSuggestionView,
+  ProactivityFrequency,
+  ProactivitySettings,
+} from "./proactive.js";
 export type { Skill } from "./skill.js";
 export type { WorkflowSchedule, WorkflowStep, Workflow } from "./workflow.js";
 export type { McpCatalogEntry, McpCatalogField, McpServerConfig, McpTool, McpServerStatus } from "./mcp.js";
 export type { ProjectContext } from "./projectContext.js";
+export type {
+  WebRecipe,
+  WebRecipeRecording,
+  WebRecipeRunResult,
+  WebRecipeStep,
+  WebRecipeStepAction,
+  WebRecipeStepArgValue,
+  WebRecipeStepRun,
+} from "./webRecipe.js";
 export type {
   ReminderRecord,
   ReminderRecurrence,
   ReminderSource,
   ReminderStatus,
 } from "./reminder.js";
+export type {
+  KnowledgeSearchQuery,
+  KnowledgeSearchResponse,
+  KnowledgeSearchResult,
+  KnowledgeSyncStatus,
+} from "./knowledge.js";
 export type { TaskPriority, TaskRecord, TaskStatus } from "./task.js";
 export type {
   ArtifactRecord,

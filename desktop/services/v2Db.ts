@@ -274,6 +274,38 @@ function initSchema(db: DatabaseSync) {
       path,
       content
     );
+
+    CREATE TABLE IF NOT EXISTS drafts (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      to_addr TEXT NOT NULL,
+      subject TEXT NOT NULL,
+      body TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      mcp_server_id TEXT,
+      project_context_id TEXT,
+      session_id TEXT,
+      attachments_json TEXT,
+      sent_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS analytics_events (
+      id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      timestamp INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      rating TEXT NOT NULL,
+      comment TEXT,
+      created_at INTEGER NOT NULL
+    );
   `);
 }
 

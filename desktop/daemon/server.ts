@@ -6,9 +6,15 @@ import type { Workflow } from "../../src/types/workflow.js";
 import type { JobRecord } from "../../src/types/runtime.js";
 import type { AgentConfig, AgentSuggestion } from "../../src/types/agent.js";
 import type { McpServerConfig } from "../../src/types/mcp.js";
+import type { ProactiveSuggestionQuery } from "../../src/types/proactive.js";
 import type { ProjectContext } from "../../src/types/projectContext.js";
 import type { ReminderRecord } from "../../src/types/reminder.js";
 import type { Skill } from "../../src/types/skill.js";
+import type { WebRecipe } from "../../src/types/webRecipe.js";
+import type { KnowledgeSearchQuery } from "../../src/types/knowledge.js";
+import type { DraftRecord } from "../../src/types/communication.js";
+import type { AnalyticsEventType } from "../../src/types/analytics.js";
+import type { FeedbackRating } from "../../src/types/persona.js";
 import { computeNextWorkflowScheduleRunAt, normalizeWorkflowSchedule, validateWorkflowSchedule } from "../../src/workflowSchedule.js";
 import type { V2AppSettings } from "../services/v2EntityStore.js";
 import { enqueueScopedJob } from "../services/jobQueue.js";
@@ -45,7 +51,28 @@ import {
   updateReminder,
 } from "../services/reminderScheduler.js";
 import { suggestAgentForPrompt } from "../services/agentRouter.js";
+import { getProactiveSuggestions } from "../services/proactiveEngine.js";
+import { getKnowledgeStatus, searchKnowledgeBase, syncKnowledgeBase } from "../services/knowledgeBase.js";
+import {
+  deleteWebRecipe,
+  executeWebRecipe,
+  getWebRecipe,
+  listActiveWebRecipeRecordings,
+  listWebRecipes,
+  saveWebRecipe,
+  startWebRecipeRecording,
+  stopWebRecipeRecording,
+} from "../services/webRecipes.js";
 import { completeTask, createTask, deleteTask, getTask, listTasks, updateTask } from "../services/taskManager.js";
+import { createDraft, deleteDraft, getDraft, listDrafts, sendDraft, updateDraft } from "../services/communicationHub.js";
+import { getWeeklyReport, listEvents, trackEvent } from "../services/analyticsCollector.js";
+import { buildPersonaInstructions, deleteFeedback, getFeedbackStats, getPersonaConfig, listFeedback, savePersonaConfig, submitFeedback } from "../services/personaManager.js";
+import { exportData, getSyncConfig, importFromPath, syncToPath, updateSyncConfig } from "../services/syncManager.js";
+import {
+  getConnectivityState,
+  startConnectivityMonitor,
+  stopConnectivityMonitor,
+} from "../services/connectivityMonitor.js";
 import {
   deleteAgentV2,
   deleteMcpServerV2,
@@ -121,6 +148,39 @@ function sendNotFound(res: ServerResponse): void {
   sendJson(res, 404, { ok: false, error: "Not found" });
 }
 
+function normalizeWebRecipePayload(payload: Partial<WebRecipe>): WebRecipe {
+  const now = Date.now();
+  return {
+    id: String(payload.id ?? randomUUID()),
+    name: payload.name?.trim() || "Nova web recipe",
+    description: payload.description?.trim() || "",
+    steps: Array.isArray(payload.steps)
+      ? payload.steps.map((step, index) => ({
+          id: String(step.id ?? `${now}-${index}`),
+          label: step.label?.trim() || "Step",
+          action: step.action ?? "browser_open",
+          args:
+            step.args && typeof step.args === "object"
+              ? Object.fromEntries(
+                  Object.entries(step.args).map(([key, value]) => [
+                    key,
+                    typeof value === "boolean" || typeof value === "number" || typeof value === "string"
+                      ? value
+                      : String(value ?? ""),
+                  ]),
+                )
+              : {},
+        }))
+      : [],
+    tags: Array.isArray(payload.tags)
+      ? payload.tags.map((tag) => String(tag).trim().toLowerCase()).filter(Boolean)
+      : [],
+    createdAt: Number(payload.createdAt ?? now),
+    updatedAt: Number(payload.updatedAt ?? now),
+    lastRunAt: typeof payload.lastRunAt === "number" ? payload.lastRunAt : undefined,
+  };
+}
+
 function computeNextRunAt(params: {
   workflow: Workflow;
   from?: number;
@@ -149,6 +209,7 @@ export class CodexAgentDaemon {
   async listen(port: number): Promise<number> {
     await mcp.connectEnabledServers(await listMcpServersV2());
     await this.refreshWorkflowSchedules();
+    startConnectivityMonitor();
     await startReminderScheduler((reminder: ReminderRecord) => {
       publishDaemonEvent({
         event: "reminder.triggered",
@@ -165,6 +226,7 @@ export class CodexAgentDaemon {
     }
     this.scheduledWorkflows.clear();
     await stopReminderScheduler();
+    stopConnectivityMonitor();
     await closeAllBrowserSessions();
     await mcp.disconnectAll();
     await new Promise<void>((resolve, reject) => {
@@ -435,6 +497,11 @@ export class CodexAgentDaemon {
         currentAgentId: body.currentAgentId,
       });
       sendJson(res, 200, suggestion);
+      return;
+    }
+
+    if (url.pathname === "/proactive/suggestions" && method === "POST") {
+      sendJson(res, 200, await getProactiveSuggestions(await readJson<ProactiveSuggestionQuery>(req)));
       return;
     }
 
@@ -739,6 +806,21 @@ export class CodexAgentDaemon {
       return;
     }
 
+    if (url.pathname === "/knowledge/status" && method === "GET") {
+      sendJson(res, 200, await getKnowledgeStatus());
+      return;
+    }
+
+    if (url.pathname === "/knowledge/sync" && method === "POST") {
+      sendJson(res, 200, await syncKnowledgeBase());
+      return;
+    }
+
+    if (url.pathname === "/knowledge/search" && method === "POST") {
+      sendJson(res, 200, await searchKnowledgeBase(await readJson<KnowledgeSearchQuery>(req)));
+      return;
+    }
+
     if (pathParts[0] === "browser" && pathParts[1] === "status" && pathParts[2] && method === "GET") {
       sendJson(res, 200, {
         browserSession: await getBrowserSessionStatus(pathParts[2]),
@@ -804,6 +886,78 @@ export class CodexAgentDaemon {
         url.searchParams.get("scopeId") ?? undefined,
       ));
       return;
+    }
+
+    if (url.pathname === "/recipes" && method === "GET") {
+      sendJson(res, 200, await listWebRecipes());
+      return;
+    }
+
+    if (url.pathname === "/recipes" && method === "POST") {
+      sendJson(res, 200, await saveWebRecipe(normalizeWebRecipePayload(await readJson(req))));
+      return;
+    }
+
+    if (url.pathname === "/recipes/recordings" && method === "GET") {
+      sendJson(res, 200, listActiveWebRecipeRecordings());
+      return;
+    }
+
+    if (url.pathname === "/recipes/recordings/start" && method === "POST") {
+      const body = await readJson<{ sessionId?: string; recipeId?: string }>(req);
+      sendJson(res, 200, await startWebRecipeRecording(body));
+      return;
+    }
+
+    if (url.pathname === "/recipes/recordings/stop" && method === "POST") {
+      const body = await readJson<{
+        recordingId: string;
+        persist?: boolean;
+        name?: string;
+        description?: string;
+        tags?: string[];
+      }>(req);
+      sendJson(res, 200, await stopWebRecipeRecording(body));
+      return;
+    }
+
+    if (pathParts[0] === "recipes" && pathParts[1]) {
+      const recipeId = pathParts[1];
+      if (method === "GET" && !pathParts[2]) {
+        const recipe = await getWebRecipe(recipeId);
+        if (!recipe) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, recipe);
+        return;
+      }
+
+      if (method === "DELETE" && !pathParts[2]) {
+        await deleteWebRecipe(recipeId);
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      if (method === "POST" && pathParts[2] === "run") {
+        const body = await readJson<{ sessionId?: string }>(req);
+        try {
+          sendJson(
+            res,
+            200,
+            await executeWebRecipe({
+              recipeId,
+              sessionId: body.sessionId,
+            }),
+          );
+        } catch (error) {
+          sendJson(res, 500, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
     }
 
     if (url.pathname === "/tasks" && method === "GET") {
@@ -1005,6 +1159,121 @@ export class CodexAgentDaemon {
     if (url.pathname === "/mcp/call" && method === "POST") {
       const body = await readJson<{ serverId: string; toolName: string; args: Record<string, unknown> }>(req);
       sendJson(res, 200, await mcp.callTool(body.serverId, body.toolName, body.args));
+      return;
+    }
+
+    // --- Drafts (Communication Hub) ---
+    if (url.pathname === "/drafts" && method === "GET") {
+      const status = url.searchParams.get("status") as any ?? undefined;
+      const type = url.searchParams.get("type") as any ?? undefined;
+      const projectContextId = url.searchParams.get("projectContextId") ?? undefined;
+      sendJson(res, 200, await listDrafts({ status, type, projectContextId }));
+      return;
+    }
+    if (url.pathname === "/drafts" && method === "POST") {
+      sendJson(res, 200, await createDraft(await readJson(req)));
+      return;
+    }
+    if (pathParts[0] === "drafts" && pathParts[1]) {
+      const draftId = pathParts[1];
+      if (pathParts[2] === "send" && method === "POST") {
+        const result = await sendDraft(draftId);
+        if (!result) { sendNotFound(res); return; }
+        sendJson(res, 200, result);
+        return;
+      }
+      if (method === "GET") {
+        const draft = await getDraft(draftId);
+        if (!draft) { sendNotFound(res); return; }
+        sendJson(res, 200, draft);
+        return;
+      }
+      if (method === "PATCH") {
+        const draft = await updateDraft(draftId, await readJson(req));
+        if (!draft) { sendNotFound(res); return; }
+        sendJson(res, 200, draft);
+        return;
+      }
+      if (method === "DELETE") {
+        const deleted = await deleteDraft(draftId);
+        if (!deleted) { sendNotFound(res); return; }
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+    }
+
+    // --- Analytics ---
+    if (url.pathname === "/analytics/events" && method === "GET") {
+      const eventType = url.searchParams.get("eventType") as AnalyticsEventType | undefined ?? undefined;
+      const since = url.searchParams.get("since") ? Number(url.searchParams.get("since")) : undefined;
+      const until = url.searchParams.get("until") ? Number(url.searchParams.get("until")) : undefined;
+      const limit = url.searchParams.get("limit") ? Number(url.searchParams.get("limit")) : undefined;
+      sendJson(res, 200, await listEvents({ eventType, since, until, limit }));
+      return;
+    }
+    if (url.pathname === "/analytics/events" && method === "POST") {
+      const body = await readJson<{ eventType: AnalyticsEventType; metadata?: Record<string, unknown> }>(req);
+      sendJson(res, 200, await trackEvent(body.eventType, body.metadata));
+      return;
+    }
+    if (url.pathname === "/analytics/weekly" && method === "GET") {
+      const weekStart = url.searchParams.get("weekStart") ? Number(url.searchParams.get("weekStart")) : undefined;
+      sendJson(res, 200, await getWeeklyReport(weekStart));
+      return;
+    }
+
+    // --- Feedback & Persona ---
+    if (url.pathname === "/feedback" && method === "GET") {
+      const sessionId = url.searchParams.get("sessionId") ?? undefined;
+      const rating = url.searchParams.get("rating") as FeedbackRating | undefined ?? undefined;
+      const limit = url.searchParams.get("limit") ? Number(url.searchParams.get("limit")) : undefined;
+      sendJson(res, 200, await listFeedback({ sessionId, rating, limit }));
+      return;
+    }
+    if (url.pathname === "/feedback" && method === "POST") {
+      sendJson(res, 200, await submitFeedback(await readJson(req)));
+      return;
+    }
+    if (url.pathname === "/feedback/stats" && method === "GET") {
+      sendJson(res, 200, await getFeedbackStats());
+      return;
+    }
+    if (pathParts[0] === "feedback" && pathParts[1] && method === "DELETE") {
+      const deleted = await deleteFeedback(pathParts[1]);
+      if (!deleted) { sendNotFound(res); return; }
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+    if (url.pathname === "/persona" && method === "GET") {
+      sendJson(res, 200, await getPersonaConfig());
+      return;
+    }
+    if (url.pathname === "/persona" && method === "POST") {
+      sendJson(res, 200, await savePersonaConfig(await readJson(req)));
+      return;
+    }
+
+    // --- Sync ---
+    if (url.pathname === "/sync/config" && method === "GET") {
+      sendJson(res, 200, getSyncConfig());
+      return;
+    }
+    if (url.pathname === "/sync/config" && method === "POST") {
+      sendJson(res, 200, updateSyncConfig(await readJson(req)));
+      return;
+    }
+    if (url.pathname === "/sync/export" && method === "POST") {
+      sendJson(res, 200, await syncToPath());
+      return;
+    }
+    if (url.pathname === "/sync/import" && method === "POST") {
+      sendJson(res, 200, await importFromPath());
+      return;
+    }
+
+    // --- Connectivity ---
+    if (url.pathname === "/connectivity" && method === "GET") {
+      sendJson(res, 200, getConnectivityState());
       return;
     }
 

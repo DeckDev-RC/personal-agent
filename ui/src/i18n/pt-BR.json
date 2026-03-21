@@ -6,8 +6,10 @@
     "today": "Hoje",
     "chat": "Chat",
     "notifications": "Notificacoes",
+    "browser": "Browser",
     "workspace": "Workspace",
     "documents": "Documentos",
+    "knowledge": "Conhecimento",
     "agents": "Agentes",
     "contexts": "Contextos",
     "tasks": "Tarefas",
@@ -60,6 +62,9 @@
         "technical": "trabalho tecnico",
         "generic": "esta solicitacao"
       }
+    },
+    "suggestionChips": {
+      "title": "Sugestoes contextuais"
     },
     "console": {
       "sessionsTitle": "Sessões",
@@ -344,6 +349,15 @@
       "manage": "Gerenciar MCPs",
       "ready": "pronto",
       "error": "alerta"
+    },
+    "proactive": {
+      "title": "Sugestoes proativas",
+      "description": "Atalhos contextuais com base em tarefas, contexto ativo, rotina do dia e ferramentas conectadas.",
+      "priority": {
+        "low": "leve",
+        "medium": "media",
+        "high": "alta"
+      }
     }
   },
   "skills": {
@@ -429,6 +443,26 @@
     "webSearchApiKey": "Chave de API de busca web",
     "webSearchTimeout": "Timeout de busca web (ms)",
     "webSearchMaxResults": "Max resultados de busca web",
+    "proactivity": {
+      "title": "Proatividade",
+      "description": "Controla quando o agente sugere proximos passos no dashboard e acima do input do chat.",
+      "enabled": "Ativar sugestoes contextuais",
+      "dashboard": "Mostrar no dashboard",
+      "chat": "Mostrar no chat",
+      "frequency": {
+        "label": "Frequencia",
+        "low": "Baixa",
+        "balanced": "Equilibrada",
+        "high": "Alta"
+      },
+      "types": {
+        "label": "Tipos de sugestao",
+        "tasks": "Tarefas e prioridades",
+        "routines": "Rotinas e agenda",
+        "context": "Contexto de projeto",
+        "communication": "Comunicacao"
+      }
+    },
     "shortcuts": "Atalhos",
     "renderer": "Renderer",
     "rendererHelp": "Renderer nativo estilo terminal ativo. `@xterm/xterm` não foi adotado para manter markdown, painéis e streaming leves no shell híbrido.",
@@ -479,7 +513,9 @@
     "openToday": "Abrir Hoje",
     "newChat": "Nova conversa",
     "openWorkspace": "Abrir workspace",
+    "openBrowser": "Abrir web recipes",
     "openDocuments": "Abrir documentos",
+    "openKnowledge": "Abrir base de conhecimento",
     "createAgent": "Criar agente",
     "createSkill": "Criar skill",
     "createWorkflow": "Criar workflow",
