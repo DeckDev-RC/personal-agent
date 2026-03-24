@@ -1,0 +1,15 @@
+{
+  "id": "mcp-twilio",
+  "name": "Twilio SMS",
+  "description": "Enviar e receber SMS via Twilio.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@anthropic/mcp-twilio"],
+  "env": {
+    "TWILIO_ACCOUNT_SID": "",
+    "TWILIO_AUTH_TOKEN": "",
+    "TWILIO_PHONE_NUMBER": ""
+  },
+  "autoConnect": false,
+  "tags": ["messaging", "sms", "twilio"]
+}

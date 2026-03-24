@@ -131,6 +131,8 @@ export async function invokeRegisteredTool(
     }
     return await executeBrowserTool(tool.actualName as BrowserToolName, args, {
       sessionId: nativeCtx.sessionId,
+      connectionId:
+        typeof args.connectionId === "string" ? args.connectionId.trim() || undefined : undefined,
       signal: nativeCtx.signal,
     });
   }

@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
-import type { AttachmentRecord } from "../../src/types/runtime.js";
+import type { AttachmentPayload, AttachmentRecord } from "../../src/types/runtime.js";
 import { attachmentsDir } from "./v2Paths.js";
 import { ensureDir } from "./v2Fs.js";
-import { saveArtifactRecord, saveMemorySourceContent } from "./v2SessionStore.js";
+import { getArtifactRecord, saveArtifactRecord, saveMemorySourceContent } from "./v2SessionStore.js";
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").slice(0, 180) || "attachment";
@@ -111,5 +111,35 @@ export async function saveAttachment(params: {
     mimeType: params.mimeType,
     byteSize: buffer.byteLength,
     extractedTextAvailable: Boolean(extractedText?.trim()),
+  };
+}
+
+export async function getAttachmentPayload(artifactId: string): Promise<AttachmentPayload | null> {
+  const artifact = await getArtifactRecord(artifactId);
+  if (!artifact?.filePath) {
+    return null;
+  }
+
+  const fileName =
+    typeof artifact.metadata?.fileName === "string"
+      ? artifact.metadata.fileName
+      : path.basename(artifact.filePath);
+  const mimeType =
+    typeof artifact.metadata?.mimeType === "string"
+      ? artifact.metadata.mimeType
+      : "application/octet-stream";
+  const buffer = await fs.readFile(artifact.filePath);
+
+  return {
+    artifactId: artifact.artifactId,
+    sessionId: artifact.sessionId,
+    fileName,
+    mimeType,
+    byteSize:
+      typeof artifact.metadata?.byteSize === "number"
+        ? artifact.metadata.byteSize
+        : buffer.byteLength,
+    extractedTextAvailable: Boolean(artifact.metadata?.extractedTextAvailable),
+    bytesBase64: buffer.toString("base64"),
   };
 }

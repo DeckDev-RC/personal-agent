@@ -2,6 +2,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { GitBranch, MessageSquare, Trash2 } from "lucide-react";
 import Badge from "../shared/Badge";
+import { getConversationDisplayTitle } from "./chatUi";
 
 type ConversationSummary = {
   id: string;
@@ -60,13 +61,13 @@ export default function ConversationList({
             <MessageSquare size={12} className="shrink-0 mt-0.5" />
             <div className="min-w-0 flex-1">
               <div className="flex items-start gap-2">
-                <span className="text-xs truncate flex-1">{conv.title}</span>
+                <span className="text-xs truncate flex-1">{getConversationDisplayTitle(conv.title, t)}</span>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(conv.id);
                   }}
-                  className="opacity-0 group-hover:opacity-100 text-text-secondary hover:text-red-400 transition-all cursor-pointer"
+                  className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 text-text-secondary hover:text-red-400 transition-all cursor-pointer"
                 >
                   <Trash2 size={10} />
                 </button>

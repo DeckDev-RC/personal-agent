@@ -4,6 +4,7 @@ import {
   BellRing,
   LayoutDashboard,
   MessageSquare,
+  Inbox,
   Search,
   FolderTree,
   FileStack,
@@ -21,6 +22,8 @@ import {
   BarChart3,
   ScrollText,
   Mail,
+  Timer,
+  Package,
 } from "lucide-react";
 import QuickActions from "../skills/QuickActions";
 
@@ -28,6 +31,7 @@ export type NavView =
   | "today"
   | "chat"
   | "notifications"
+  | "inbox"
   | "browser"
   | "workspace"
   | "documents"
@@ -41,7 +45,9 @@ export type NavView =
   | "analytics"
   | "logs"
   | "settings"
-  | "communication";
+  | "communication"
+  | "automation"
+  | "plugins";
 
 type SidebarProps = {
   open: boolean;
@@ -56,6 +62,7 @@ const chatItems: NavItem[] = [
   { view: "today", icon: LayoutDashboard, labelKey: "nav.today", fallbackLabel: "Hoje" },
   { view: "chat", icon: MessageSquare, labelKey: "nav.chat", fallbackLabel: "Chat" },
   { view: "notifications", icon: BellRing, labelKey: "nav.notifications", fallbackLabel: "Notificacoes" },
+  { view: "inbox", icon: Inbox, labelKey: "nav.inbox", fallbackLabel: "Inbox" },
 ];
 
 const managementItems: NavItem[] = [
@@ -69,6 +76,8 @@ const managementItems: NavItem[] = [
   { view: "skills", icon: Zap, labelKey: "nav.skills", fallbackLabel: "Skills" },
   { view: "workflows", icon: GitBranch, labelKey: "nav.workflows", fallbackLabel: "Workflows" },
   { view: "communication", icon: Mail, labelKey: "nav.communication", fallbackLabel: "Comunicação" },
+  { view: "automation", icon: Timer, labelKey: "nav.automation", fallbackLabel: "Automação" },
+  { view: "plugins", icon: Package, labelKey: "nav.plugins", fallbackLabel: "Plugins" },
   { view: "mcp", icon: Plug, labelKey: "nav.mcp", fallbackLabel: "MCPs" },
   { view: "analytics", icon: BarChart3, labelKey: "nav.analytics", fallbackLabel: "Analytics" },
   { view: "logs", icon: ScrollText, labelKey: "nav.logs", fallbackLabel: "Logs" },

@@ -1,5 +1,5 @@
 {
-  "app": { "name": "Codex Agent" },
+  "app": { "name": "K" },
   "nav": { "chat": "Chat", "agents": "Agenten", "skills": "Skills", "workflows": "Workflows", "mcp": "MCPs", "analytics": "Analytik", "logs": "Protokolle", "settings": "Einstellungen" },
   "chat": {
     "placeholder": "Nachricht eingeben...", "send": "Senden", "newConversation": "Neue Unterhaltung",
@@ -57,7 +57,7 @@
     "shortcuts.sidebar": "Seitenleiste", "shortcuts.commandPalette": "Befehlspalette",
     "shortcuts.sendMessage": "Nachricht senden", "shortcuts.newLine": "Neue Zeile"
   },
-  "common": { "save": "Speichern", "cancel": "Abbrechen", "delete": "Löschen", "create": "Erstellen", "edit": "Bearbeiten", "close": "Schließen", "confirm": "Bestätigen", "search": "Suchen...", "loading": "Wird geladen...", "error": "Fehler", "success": "Erfolg", "noResults": "Keine Ergebnisse", "comingSoon": "Demnächst", "minimize": "Minimieren", "closeWindow": "Schließen" },
+  "common": { "save": "Speichern", "cancel": "Abbrechen", "delete": "Löschen", "create": "Erstellen", "edit": "Bearbeiten", "close": "Schließen", "confirm": "Bestätigen", "search": "Suchen...", "loading": "Wird geladen...", "error": "Fehler", "success": "Erfolg", "noResults": "Keine Ergebnisse", "comingSoon": "Demnächst", "minimize": "Minimieren", "maximizeWindow": "Maximieren oder wiederherstellen", "closeWindow": "Schließen" },
   "slashCommand": { "new": "Neue Unterhaltung", "newDesc": "Neue Unterhaltung starten", "clear": "Leeren", "clearDesc": "Aktuelle Unterhaltung leeren", "export": "Exportieren", "exportDesc": "Unterhaltung als Markdown exportieren", "search": "Suchen", "searchDesc": "In der Unterhaltung suchen", "model": "Modell", "modelDesc": "Aktuelles Modell wechseln" },
   "commandPalette": { "placeholder": "Befehl eingeben...", "newChat": "Neue Unterhaltung", "createAgent": "Agent erstellen", "createSkill": "Skill erstellen", "createWorkflow": "Workflow erstellen", "addMcp": "MCP-Server hinzufügen", "openSettings": "Einstellungen öffnen", "switchLanguage": "Sprache wechseln" }
 }

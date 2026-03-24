@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { AgentConfig } from "../../src/types/agent.js";
 import type {
+  AttachmentRecord,
   ArtifactRecord,
   ToolHistoryRecord,
   ToolInvocationResponse,
   WebSearchResult,
 } from "../../src/types/runtime.js";
 import { getDefaultModelRef } from "../../src/types/model.js";
-import { getAgentV2 } from "./v2EntityStore.js";
+import { getAgentV2, getSettingsV2 } from "./v2EntityStore.js";
 import {
   createApprovalRecord,
   createRunRecord,
@@ -67,6 +68,7 @@ export type ToolExecutionEvent =
       source: "native" | "mcp" | "browser";
       serverId?: string;
       serverName?: string;
+      attachments?: AttachmentRecord[];
     };
 
 type EffectiveRiskDecision =
@@ -106,6 +108,7 @@ export async function getEffectiveToolRiskDecision(params: {
 }): Promise<EffectiveRiskDecision> {
   const agent = await resolveAgentForSession(params.sessionId);
   const policy = agent?.toolPolicy;
+  const settings = await getSettingsV2().catch(() => null);
 
   if (policy && !policy.allowNetworkedTools && params.tool.metadata.capabilities.includes("networked")) {
     return { mode: "deny", reason: "Networked tools are disabled for this agent.", requiresApprovalNow: false };
@@ -116,6 +119,13 @@ export async function getEffectiveToolRiskDecision(params: {
   }
 
   const base = getRiskDecision(params.tool, params.args);
+  if (base.mode === "approval" && settings?.approvalMode === "free") {
+    return {
+      mode: "allow",
+      reason: `Allowed by free mode: ${params.tool.publicName}`,
+      requiresApprovalNow: false,
+    };
+  }
   if (base.mode === "approval" && isTrustedTool(params.tool, agent)) {
     return {
       mode: "allow",
@@ -252,6 +262,7 @@ async function executeToolBody(params: {
   const result = await invokeRegisteredTool(params.tool, params.args, {
     workspaceRoot: (await getSessionRecord(params.sessionId))?.workspaceRoot ?? process.cwd(),
     sessionId: params.sessionId,
+    runId: params.runId,
     signal: context?.abortController.signal,
   });
 
@@ -314,6 +325,7 @@ async function executeToolBody(params: {
     timedOut,
     aborted,
     isError: result.isError === true,
+    metadata: result.metadata,
   };
 }
 
@@ -324,6 +336,9 @@ async function finalizeToolInvocation(params: {
   approvalId?: string;
   onEvent?: (event: ToolExecutionEvent) => void;
 }): Promise<ToolInvocationResponse> {
+  const attachments = Array.isArray(params.response.metadata?.attachments)
+    ? (params.response.metadata.attachments as AttachmentRecord[])
+    : undefined;
   const history: ToolHistoryRecord = {
     toolCallId: params.response.toolCallId,
     sessionId: params.response.sessionId,
@@ -359,7 +374,11 @@ async function finalizeToolInvocation(params: {
       timestamp: Date.now(),
       toolCallId: params.response.toolCallId,
       toolName: params.tool.publicName,
-      metadata: { isError: params.response.isError, source: params.tool.source },
+      metadata: {
+        ...(params.response.metadata ?? {}),
+        isError: params.response.isError,
+        source: params.tool.source,
+      },
     });
     params.onEvent?.({
       type: "toolresult",
@@ -372,6 +391,7 @@ async function finalizeToolInvocation(params: {
       source: params.tool.source,
       serverId: params.tool.serverId,
       serverName: params.tool.serverName,
+      attachments,
     });
   }
 

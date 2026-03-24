@@ -1,0 +1,11 @@
+{
+  "id": "plugin-slack-assistant",
+  "name": "Slack Assistant",
+  "version": "1.0.0",
+  "description": "AI-powered Slack bot that can respond to messages, manage channels and automate workflows.",
+  "author": "Codex Community",
+  "tags": [
+    "messaging",
+    "slack"
+  ]
+}

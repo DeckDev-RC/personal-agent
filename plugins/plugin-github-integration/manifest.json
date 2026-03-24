@@ -1,0 +1,11 @@
+{
+  "id": "plugin-github-integration",
+  "name": "GitHub Integration",
+  "version": "1.0.0",
+  "description": "Full GitHub integration with issues, PRs, code review and actions management.",
+  "author": "Codex Community",
+  "tags": [
+    "dev",
+    "github"
+  ]
+}

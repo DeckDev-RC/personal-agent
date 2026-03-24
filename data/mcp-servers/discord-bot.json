@@ -1,0 +1,13 @@
+{
+  "id": "mcp-discord",
+  "name": "Discord Bot",
+  "description": "Interagir com servidores Discord via bot.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@anthropic/mcp-discord"],
+  "env": {
+    "DISCORD_BOT_TOKEN": ""
+  },
+  "autoConnect": false,
+  "tags": ["messaging", "discord"]
+}

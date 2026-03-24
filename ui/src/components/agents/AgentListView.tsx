@@ -5,6 +5,7 @@ import { useAgentStore, DEFAULT_AGENT, type AgentConfig } from "../../stores/age
 import Button from "../shared/Button";
 import Badge from "../shared/Badge";
 import AgentEditor from "./AgentEditor";
+import SubagentPanel from "./SubagentPanel";
 
 export default function AgentListView() {
   const { t } = useTranslation();
@@ -43,13 +44,17 @@ export default function AgentListView() {
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-6">
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-lg font-semibold text-text-primary">{t("agents.title")}</h1>
           <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
             <Plus size={14} />
             {t("agents.create")}
           </Button>
+        </div>
+
+        <div className="mb-4">
+          <SubagentPanel />
         </div>
 
         {allAgents.length === 0 ? (

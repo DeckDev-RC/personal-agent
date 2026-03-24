@@ -1,0 +1,14 @@
+{
+  "id": "mcp-whatsapp",
+  "name": "WhatsApp Business",
+  "description": "Enviar mensagens via WhatsApp Business API.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@anthropic/mcp-whatsapp"],
+  "env": {
+    "WHATSAPP_PHONE_NUMBER_ID": "",
+    "WHATSAPP_ACCESS_TOKEN": ""
+  },
+  "autoConnect": false,
+  "tags": ["messaging", "whatsapp"]
+}

@@ -1,0 +1,13 @@
+{
+  "id": "mcp-github",
+  "name": "GitHub",
+  "description": "Gerenciar issues, PRs, repos e actions no GitHub.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-github"],
+  "env": {
+    "GITHUB_PERSONAL_ACCESS_TOKEN": ""
+  },
+  "autoConnect": false,
+  "tags": ["dev", "github", "issues"]
+}

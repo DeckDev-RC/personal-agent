@@ -13,8 +13,13 @@ import {
   saveWebRecipeV2,
 } from "./v2EntityStore.js";
 import { createSessionRecord, getSessionRecord } from "./v2SessionStore.js";
+import {
+  ensureConnectionBrowserProfile,
+  resolveConnectionSessionId,
+} from "./connectionManager.js";
 import type {
   WebRecipe,
+  WebRecipeFieldDefinition,
   WebRecipeRecording,
   WebRecipeRunResult,
   WebRecipeStep,
@@ -65,6 +70,25 @@ function normalizeStepArgValue(value: unknown): WebRecipeStepArgValue {
   return JSON.stringify(value);
 }
 
+function normalizeFieldDefinitions(value: unknown): WebRecipeFieldDefinition[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value
+    .map((entry) => (entry && typeof entry === "object" && !Array.isArray(entry) ? entry : null))
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry))
+    .map((entry, index) => ({
+      key: String(entry.key ?? `field_${index + 1}`).trim(),
+      label: String(entry.label ?? entry.key ?? `Field ${index + 1}`).trim(),
+      type:
+        entry.type === "number" || entry.type === "boolean" || entry.type === "json"
+          ? entry.type
+          : "string",
+      description: typeof entry.description === "string" ? entry.description.trim() || undefined : undefined,
+      required: entry.required === true,
+    }));
+}
+
 function normalizeStep(step: Partial<WebRecipeStep>, fallbackTimestamp = Date.now()): WebRecipeStep {
   const action = String(step.action ?? "browser_open") as WebRecipeStepAction;
   const args =
@@ -91,6 +115,11 @@ export function normalizeWebRecipe(partial: Partial<WebRecipe>, fallbackTimestam
       ? partial.steps.map((step, index) => normalizeStep(step, fallbackTimestamp + index))
       : [],
     tags: normalizeTags(partial.tags),
+    connectionId: partial.connectionId?.trim() || undefined,
+    targetSite: partial.targetSite?.trim() || undefined,
+    inputSchema: normalizeFieldDefinitions(partial.inputSchema),
+    expectedOutputs: normalizeFieldDefinitions(partial.expectedOutputs),
+    requiresApprovalProfile: partial.requiresApprovalProfile?.trim() || undefined,
     createdAt: Number(partial.createdAt ?? fallbackTimestamp),
     updatedAt: Number(partial.updatedAt ?? fallbackTimestamp),
     lastRunAt: typeof partial.lastRunAt === "number" ? partial.lastRunAt : undefined,
@@ -99,14 +128,32 @@ export function normalizeWebRecipe(partial: Partial<WebRecipe>, fallbackTimestam
 
 function defaultStepLabel(action: WebRecipeStepAction): string {
   switch (action) {
+    case "browser_tabs":
+      return "Listar abas";
     case "browser_open":
       return "Abrir pagina";
     case "browser_click":
       return "Clicar elemento";
+    case "browser_hover":
+      return "Passar o mouse";
     case "browser_type":
       return "Preencher campo";
+    case "browser_drag":
+      return "Arrastar elemento";
+    case "browser_select":
+      return "Selecionar opcao";
+    case "browser_fill":
+      return "Preencher formulario";
     case "browser_wait":
       return "Aguardar condicao";
+    case "browser_evaluate":
+      return "Executar script";
+    case "browser_batch":
+      return "Executar lote";
+    case "browser_set_input_files":
+      return "Definir arquivos";
+    case "browser_handle_dialog":
+      return "Preparar dialogo";
     case "browser_screenshot":
       return "Capturar screenshot";
     case "browser_extract_text":
@@ -172,7 +219,36 @@ function ensureRecordingSubscription(): void {
   recordingSubscriptionReady = true;
 }
 
+function isRecordableBrowserAction(action: BrowserToolName): action is WebRecipeStepAction {
+  switch (action) {
+    case "browser_tabs":
+    case "browser_open":
+    case "browser_snapshot":
+    case "browser_click":
+    case "browser_hover":
+    case "browser_type":
+    case "browser_drag":
+    case "browser_select":
+    case "browser_fill":
+    case "browser_wait":
+    case "browser_evaluate":
+    case "browser_batch":
+    case "browser_set_input_files":
+    case "browser_handle_dialog":
+    case "browser_screenshot":
+    case "browser_extract_text":
+    case "browser_close":
+      return true;
+    default:
+      return false;
+  }
+}
+
 function captureBrowserAction(event: BrowserActionEvent): void {
+  if (!isRecordableBrowserAction(event.action)) {
+    return;
+  }
+
   for (const [recordingId, recording] of activeRecordings.entries()) {
     if (recording.sessionId !== event.sessionId) {
       continue;
@@ -228,7 +304,17 @@ export async function deleteWebRecipe(recipeId: string): Promise<void> {
 
 export async function executeWebRecipe(params: ExecuteWebRecipeParams): Promise<WebRecipeRunResult> {
   const recipe = await resolveRecipe(params);
-  const sessionId = await ensureRecipeSession(params.sessionId, recipe.name);
+  const connectionScopedSessionId =
+    !params.sessionId && recipe.connectionId
+      ? resolveConnectionSessionId(recipe.connectionId)
+      : undefined;
+  if (recipe.connectionId) {
+    await ensureConnectionBrowserProfile(recipe.connectionId).catch(() => undefined);
+  }
+  const sessionId = await ensureRecipeSession(
+    params.sessionId ?? connectionScopedSessionId,
+    recipe.name,
+  );
   const startedAt = Date.now();
   const steps: WebRecipeStepRun[] = [];
   let errorText: string | undefined;
@@ -247,6 +333,7 @@ export async function executeWebRecipe(params: ExecuteWebRecipeParams): Promise<
     try {
       const result = await executeBrowserTool(recipeStep.action as BrowserToolName, recipeStep.args, {
         sessionId,
+        connectionId: recipe.connectionId,
       });
       if (result.isError) {
         throw new Error(result.content || "Browser step failed.");

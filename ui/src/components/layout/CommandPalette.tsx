@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RouteView } from "../../router";
 import { setRoute } from "../../router";
+import { resolveAgentModel } from "../../../../src/settings/resolveAgentModel.js";
 import { DEFAULT_AGENT, useAgentStore, type AgentConfig } from "../../stores/agentStore";
 import { useChatStore } from "../../stores/chatStore";
 import { useContextStore } from "../../stores/contextStore";
@@ -145,7 +146,7 @@ export default function CommandPalette({
     }
 
     createConversation(
-      agent.model || settings.defaultModelRef,
+      resolveAgentModel(agent, settings.defaultModelRef),
       buildAgentSystemPrompt(agent),
       agent.id,
       projectContextId || undefined,

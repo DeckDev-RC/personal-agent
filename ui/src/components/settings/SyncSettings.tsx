@@ -78,7 +78,7 @@ export default function SyncSettings() {
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center gap-2">
-        <FolderSync size={16} className="text-accent" />
+        <FolderSync size={16} className="text-accent-blue" />
         <h2 className="text-sm font-semibold text-text-primary">
           {t("sync.title", "Sincronização")}
         </h2>
@@ -89,7 +89,7 @@ export default function SyncSettings() {
         <Input
           value={config.syncPath}
           onChange={(v) => setConfig({ ...config, syncPath: v })}
-          placeholder="C:/Users/.../OneDrive/OpenClaw"
+          placeholder="C:/Users/.../OneDrive/CodexAgent"
         />
       </div>
 
@@ -127,7 +127,7 @@ export default function SyncSettings() {
       </div>
 
       {message && (
-        <div className="text-xs text-accent bg-accent/10 rounded-lg px-3 py-2">{message}</div>
+        <div className="rounded-lg bg-accent-blue/10 px-3 py-2 text-xs text-accent-blue">{message}</div>
       )}
 
       {config.lastSyncAt && (

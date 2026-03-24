@@ -1,3 +1,10 @@
+import type {
+  BrowserProfileId,
+  BrowserRefMode,
+  BrowserSnapshotFormat,
+  BrowserTargetId,
+} from "./browser.js";
+
 export type SessionMessageRole = "user" | "assistant" | "tool" | "system";
 
 export type RunPhase = "plan" | "execute" | "review" | "repair" | "complete";
@@ -173,14 +180,187 @@ export type BrowserSessionRecord = {
 };
 
 export type BrowserToolArgs =
-  | { action: "browser_open"; url: string }
-  | { action: "browser_snapshot" }
-  | { action: "browser_click"; selector: string }
-  | { action: "browser_type"; selector: string; text: string; submit?: boolean }
-  | { action: "browser_wait"; selector?: string; text?: string; timeMs?: number }
-  | { action: "browser_screenshot"; fullPage?: boolean }
-  | { action: "browser_extract_text"; selector?: string }
-  | { action: "browser_close" };
+  | {
+      action: "browser_tabs";
+      connectionId?: string;
+      profile?: BrowserProfileId;
+    }
+  | {
+      action: "browser_open";
+      url: string;
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      frame?: string;
+    }
+  | {
+      action: "browser_snapshot";
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      snapshotFormat?: BrowserSnapshotFormat;
+      refs?: BrowserRefMode;
+      selector?: string;
+      ref?: string;
+      frame?: string;
+      labels?: boolean;
+      limit?: number;
+      maxChars?: number;
+    }
+  | {
+      action: "browser_click";
+      selector?: string;
+      ref?: string;
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      frame?: string;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_hover";
+      selector?: string;
+      ref?: string;
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      frame?: string;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_type";
+      selector?: string;
+      ref?: string;
+      text: string;
+      submit?: boolean;
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      frame?: string;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_drag";
+      startSelector?: string;
+      startRef?: string;
+      endSelector?: string;
+      endRef?: string;
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      frame?: string;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_select";
+      selector?: string;
+      ref?: string;
+      values: string[] | string;
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      frame?: string;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_fill";
+      fields:
+        | Array<{
+            selector?: string;
+            ref?: string;
+            type?: string;
+            value?: string | number | boolean;
+          }>
+        | string;
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      frame?: string;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_wait";
+      selector?: string;
+      text?: string;
+      textGone?: string;
+      timeMs?: number;
+      url?: string;
+      loadState?: "load" | "domcontentloaded" | "networkidle";
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      frame?: string;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_evaluate";
+      selector?: string;
+      ref?: string;
+      fn: string;
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      frame?: string;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_batch";
+      actions: Array<Record<string, unknown>> | string;
+      stopOnError?: boolean;
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_set_input_files";
+      selector?: string;
+      ref?: string;
+      paths: string[] | string;
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      frame?: string;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_handle_dialog";
+      accept: boolean;
+      promptText?: string;
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_screenshot";
+      fullPage?: boolean;
+      selector?: string;
+      ref?: string;
+      labels?: boolean;
+      type?: "png" | "jpeg";
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      frame?: string;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_extract_text";
+      selector?: string;
+      ref?: string;
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+      frame?: string;
+      timeoutMs?: number;
+    }
+  | {
+      action: "browser_close";
+      connectionId?: string;
+      profile?: BrowserProfileId;
+      targetId?: BrowserTargetId;
+    };
 
 export type WebSearchResult = {
   title: string;
@@ -196,6 +376,10 @@ export type AttachmentRecord = {
   mimeType: string;
   byteSize: number;
   extractedTextAvailable: boolean;
+};
+
+export type AttachmentPayload = AttachmentRecord & {
+  bytesBase64: string;
 };
 
 export type ToolInvocationStatus =
@@ -218,6 +402,7 @@ export type ToolInvocationResponse = {
   timedOut: boolean;
   aborted: boolean;
   isError: boolean;
+  metadata?: Record<string, unknown>;
 };
 
 export type ToolApprovalStatus = "pending" | "approved" | "rejected";

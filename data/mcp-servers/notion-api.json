@@ -1,0 +1,13 @@
+{
+  "id": "mcp-notion",
+  "name": "Notion",
+  "description": "Acessar databases, paginas e blocos do Notion.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@anthropic/mcp-notion"],
+  "env": {
+    "NOTION_API_KEY": ""
+  },
+  "autoConnect": false,
+  "tags": ["productivity", "notion", "docs"]
+}

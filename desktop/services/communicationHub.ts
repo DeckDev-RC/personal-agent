@@ -1,11 +1,176 @@
 import type { SQLInputValue } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import type { DraftRecord, DraftStatus, DraftType } from "../../src/types/communication.js";
+import {
+  getDraftChannel,
+  listDraftChannels,
+  type DraftRecord,
+  type DraftStatus,
+  type DraftType,
+} from "../../src/types/communication.js";
+import type { McpTool } from "../../src/types/mcp.js";
 import { ensureV2Db } from "./v2Db.js";
+import { listMcpServersV2 } from "./v2EntityStore.js";
 import * as mcp from "./mcpManager.js";
 
 const VALID_STATUSES = new Set<DraftStatus>(["draft", "sent", "failed"]);
-const VALID_TYPES = new Set<DraftType>(["email", "slack", "teams", "generic"]);
+const VALID_TYPES = new Set<DraftType>(listDraftChannels().map((channel) => channel.type));
+const TOOL_NAME_CANDIDATES: Record<DraftType, string[]> = {
+  email: ["send_email", "draft_reply", "send_message", "post_message"],
+  slack: ["post_message", "send_message", "send_dm", "send_direct_message", "create_message"],
+  teams: ["send_message", "post_message", "send_teams_message", "create_message"],
+  discord: ["send_message", "post_message", "create_message", "send_dm"],
+  telegram: ["send_message", "send_telegram_message", "post_message", "create_message"],
+  whatsapp: ["send_whatsapp_message", "send_message", "post_message"],
+  signal: ["send_message", "post_message", "create_message"],
+  sms: ["send_sms", "send_text_message", "send_message"],
+  generic: ["send_message", "post_message", "create_message", "send_email"],
+};
+
+function normalizeToolName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function getToolSchemaProperties(tool: McpTool): Set<string> {
+  const schema =
+    tool.inputSchema && typeof tool.inputSchema === "object"
+      ? (tool.inputSchema as Record<string, unknown>)
+      : {};
+  const properties =
+    schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties)
+      ? (schema.properties as Record<string, unknown>)
+      : {};
+  return new Set(Object.keys(properties).map((key) => key.toLowerCase()));
+}
+
+function setFirstMatchingArg(
+  target: Record<string, unknown>,
+  schemaProperties: Set<string>,
+  candidateKeys: string[],
+  value: string,
+): void {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  for (const candidate of candidateKeys) {
+    if (schemaProperties.has(candidate.toLowerCase())) {
+      target[candidate] = trimmed;
+      return;
+    }
+  }
+}
+
+function findPreferredTool(tools: McpTool[], type: DraftType): McpTool | undefined {
+  const candidates = TOOL_NAME_CANDIDATES[type].map(normalizeToolName);
+  return tools.find((tool) => candidates.includes(normalizeToolName(tool.name)));
+}
+
+function buildDraftToolArgs(tool: McpTool, draft: DraftRecord): Record<string, unknown> {
+  const schemaProperties = getToolSchemaProperties(tool);
+  const args: Record<string, unknown> = {};
+
+  setFirstMatchingArg(
+    args,
+    schemaProperties,
+    [
+      "to",
+      "recipient",
+      "recipients",
+      "email",
+      "address",
+      "phone",
+      "phone_number",
+      "number",
+      "channel",
+      "channel_id",
+      "conversation",
+      "chat_id",
+      "user",
+      "username",
+      "target",
+      "target_id",
+    ],
+    draft.to,
+  );
+  setFirstMatchingArg(args, schemaProperties, ["subject", "title", "summary"], draft.subject);
+  setFirstMatchingArg(args, schemaProperties, ["body", "message", "text", "content", "markdown", "html"], draft.body);
+
+  if (Object.keys(args).length > 0) {
+    return args;
+  }
+
+  const normalizedToolName = normalizeToolName(tool.name);
+  if (draft.type === "email" || normalizedToolName.includes("email")) {
+    return {
+      to: draft.to,
+      subject: draft.subject,
+      body: draft.body,
+    };
+  }
+
+  if (draft.type === "sms" || normalizedToolName.includes("sms")) {
+    return {
+      to: draft.to,
+      message: draft.body,
+    };
+  }
+
+  return {
+    to: draft.to,
+    message: draft.body,
+  };
+}
+
+async function resolveDraftDelivery(draft: DraftRecord): Promise<
+  | { serverId: string; tool: McpTool; args: Record<string, unknown> }
+  | { error: string }
+> {
+  const channel = getDraftChannel(draft.type);
+  const preferredCatalogIds = new Set(channel.preferredCatalogIds);
+  const configuredServers = (await listMcpServersV2()).filter((server) => server.enabled);
+  const candidateServers = draft.mcpServerId
+    ? configuredServers.filter((server) => server.id === draft.mcpServerId)
+    : configuredServers;
+
+  if (candidateServers.length === 0) {
+    return {
+      error: draft.mcpServerId
+        ? `Configured MCP server "${draft.mcpServerId}" is not enabled.`
+        : `No enabled MCP server is configured for ${channel.label}.`,
+    };
+  }
+
+  const ranked = candidateServers
+    .map((server) => {
+      const tool = findPreferredTool(mcp.getToolsForServer(server.id), draft.type);
+      return {
+        server,
+        tool,
+        score:
+          (draft.mcpServerId === server.id ? 1_000 : 0) +
+          (preferredCatalogIds.has(server.catalogId ?? "") ? 100 : 0) +
+          (tool ? 10 : 0),
+      };
+    })
+    .filter((item): item is { server: (typeof configuredServers)[number]; tool: McpTool; score: number } => Boolean(item.tool))
+    .sort((left, right) => right.score - left.score || left.server.name.localeCompare(right.server.name));
+
+  if (ranked.length === 0) {
+    return {
+      error: draft.mcpServerId
+        ? `No compatible outbound tool was found on MCP server "${draft.mcpServerId}".`
+        : `No connected MCP server exposes a compatible outbound tool for ${channel.label}.`,
+    };
+  }
+
+  const selected = ranked[0];
+  return {
+    serverId: selected.server.id,
+    tool: selected.tool,
+    args: buildDraftToolArgs(selected.tool, draft),
+  };
+}
 
 function rowToDraft(row: Record<string, unknown>): DraftRecord {
   return {
@@ -125,21 +290,34 @@ export async function sendDraft(id: string): Promise<DraftRecord | null> {
 
   const db = await ensureV2Db();
   const now = Date.now();
-  let status: DraftStatus = "sent";
+  let status: DraftStatus = "failed";
+  let sentAt: number | undefined;
+  let resolvedServerId = draft.mcpServerId;
 
-  if (draft.mcpServerId) {
-    try {
-      const toolName = draft.type === "email" ? "send_email" : draft.type === "slack" ? "send_message" : "send_message";
-      await mcp.callTool(draft.mcpServerId, toolName, {
-        to: draft.to,
-        subject: draft.subject,
-        body: draft.body,
-      });
-    } catch {
-      status = "failed";
+  try {
+    const delivery = await resolveDraftDelivery(draft);
+    if ("error" in delivery) {
+      throw new Error(delivery.error);
     }
+
+    const result = await mcp.callTool(delivery.serverId, delivery.tool.name, delivery.args);
+    resolvedServerId = delivery.serverId;
+    if (result.isError) {
+      throw new Error(result.content);
+    }
+
+    status = "sent";
+    sentAt = now;
+  } catch {
+    status = "failed";
   }
 
-  db.prepare("UPDATE drafts SET status = ?, sent_at = ?, updated_at = ? WHERE id = ?").run(status, now, now, id);
-  return { ...draft, status, sentAt: now, updatedAt: now };
+  db.prepare("UPDATE drafts SET status = ?, sent_at = ?, updated_at = ?, mcp_server_id = ? WHERE id = ?").run(
+    status,
+    sentAt ?? null,
+    now,
+    resolvedServerId ?? null,
+    id,
+  );
+  return { ...draft, status, sentAt, updatedAt: now, mcpServerId: resolvedServerId };
 }

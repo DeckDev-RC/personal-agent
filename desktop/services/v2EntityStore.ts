@@ -1,98 +1,25 @@
 import type { AgentConfig } from "../../src/types/agent.js";
-import {
-  getModelId,
-  getDefaultModelRef,
-  normalizeProviderName,
-  splitModelRef,
-  type CanonicalProviderName,
-} from "../../src/types/model.js";
+import type { AutomationPackage } from "../../src/types/automation.js";
+import type { Connection } from "../../src/types/connection.js";
 import type { McpServerConfig } from "../../src/types/mcp.js";
 import type { PersonaConfig } from "../../src/types/persona.js";
-import type { ProactivitySettings } from "../../src/types/proactive.js";
 import type { ProjectContext } from "../../src/types/projectContext.js";
+import {
+  DEFAULT_APP_SETTINGS,
+  normalizeAppSettings,
+  type AppSettings,
+} from "../../src/settings/appSettings.js";
 import type { Skill } from "../../src/types/skill.js";
 import type { WebRecipe } from "../../src/types/webRecipe.js";
 import type { Workflow } from "../../src/types/workflow.js";
 import { loadDefaultCoworkAgents, loadDefaultCoworkSkills, loadDefaultCoworkWorkflows } from "./coworkDefaults.js";
 import { ensureV2Db } from "./v2Db.js";
 
-export type V2AppSettings = {
-  provider: CanonicalProviderName;
-  defaultModelRef: string;
-  fastModelRef: string;
-  reviewModelRef: string;
-  defaultModel: string;
-  fastModel: string;
-  reviewModel: string;
-  language: "pt-BR" | "en" | "es" | "de" | "zh-CN" | "zh-TW";
-  themeMode: "dark" | "light" | "system";
-  reasoningEffort: "low" | "medium" | "high" | "xhigh";
-  planMode: boolean;
-  fastMode: boolean;
-  onboardingCompleted: boolean;
-  globalSystemPrompt: string;
-  contextWindow: number;
-  compactAtTokens: number;
-  maxOutputTokens: number;
-  webSearch: {
-    endpoint: string;
-    apiKey: string;
-    timeoutMs: number;
-    maxResults: number;
-  };
-  reasoningPolicyByTask: Record<string, "low" | "medium" | "high" | "xhigh">;
-  proactivity: ProactivitySettings;
+export type V2AppSettings = AppSettings & {
   persona?: PersonaConfig;
 };
 
-export const DEFAULT_PROACTIVITY_SETTINGS: ProactivitySettings = {
-  enabled: true,
-  dashboard: true,
-  chat: true,
-  frequency: "balanced",
-  suggestionTypes: {
-    tasks: true,
-    routines: true,
-    context: true,
-    communication: true,
-  },
-};
-
-export const DEFAULT_V2_SETTINGS: V2AppSettings = {
-  provider: "openai-codex",
-  defaultModelRef: getDefaultModelRef("openai-codex"),
-  fastModelRef: "openai-codex/gpt-5.4-mini",
-  reviewModelRef: getDefaultModelRef("openai-codex"),
-  defaultModel: getDefaultModelRef("openai-codex"),
-  fastModel: "openai-codex/gpt-5.4-mini",
-  reviewModel: getDefaultModelRef("openai-codex"),
-  language: "pt-BR",
-  themeMode: "dark",
-  reasoningEffort: "medium",
-  planMode: false,
-  fastMode: false,
-  onboardingCompleted: false,
-  globalSystemPrompt: "",
-  contextWindow: 128000,
-  compactAtTokens: 96000,
-  maxOutputTokens: 4096,
-  webSearch: {
-    endpoint: "",
-    apiKey: "",
-    timeoutMs: 15000,
-    maxResults: 5,
-  },
-  reasoningPolicyByTask: {
-    chat_simple: "low",
-    plan_research: "medium",
-    code_read: "medium",
-    code_change: "high",
-    command_exec: "medium",
-    review_fix: "high",
-    tool_invoke: "medium",
-  },
-  proactivity: DEFAULT_PROACTIVITY_SETTINGS,
-};
+export const DEFAULT_V2_SETTINGS: V2AppSettings = DEFAULT_APP_SETTINGS;
 
 function parseJson<T>(value: unknown, fallback: T): T {
   if (typeof value !== "string" || !value.trim()) {
@@ -106,37 +33,7 @@ function parseJson<T>(value: unknown, fallback: T): T {
 }
 
 function normalizeSettings(settings?: Partial<V2AppSettings> | null): V2AppSettings {
-  const provider = normalizeProviderName(
-    settings?.provider ??
-      splitModelRef(settings?.defaultModelRef ?? settings?.defaultModel).provider,
-  );
-  const defaultModelRef = splitModelRef(getModelId(settings?.defaultModelRef ?? settings?.defaultModel), provider).modelRef;
-  const fastModelRef = splitModelRef(getModelId(settings?.fastModelRef ?? settings?.fastModel), provider).modelRef;
-  const reviewModelRef = splitModelRef(getModelId(settings?.reviewModelRef ?? settings?.reviewModel), provider).modelRef;
-
-  return {
-    ...DEFAULT_V2_SETTINGS,
-    ...(settings ?? {}),
-    provider,
-    defaultModelRef,
-    fastModelRef,
-    reviewModelRef,
-    defaultModel: defaultModelRef,
-    fastModel: fastModelRef,
-    reviewModel: reviewModelRef,
-    reasoningPolicyByTask: {
-      ...DEFAULT_V2_SETTINGS.reasoningPolicyByTask,
-      ...(settings?.reasoningPolicyByTask ?? {}),
-    },
-    proactivity: {
-      ...DEFAULT_PROACTIVITY_SETTINGS,
-      ...(settings?.proactivity ?? {}),
-      suggestionTypes: {
-        ...DEFAULT_PROACTIVITY_SETTINGS.suggestionTypes,
-        ...(settings?.proactivity?.suggestionTypes ?? {}),
-      },
-    },
-  };
+  return normalizeAppSettings(settings);
 }
 
 let agentSeedPromise: Promise<void> | null = null;
@@ -240,7 +137,15 @@ async function ensureDefaultCoworkWorkflowsSeeded(): Promise<void> {
   }
 }
 
-type EntityKind = "agents" | "skills" | "workflows" | "mcp_servers" | "project_contexts" | "web_recipes";
+type EntityKind =
+  | "agents"
+  | "skills"
+  | "workflows"
+  | "mcp_servers"
+  | "project_contexts"
+  | "web_recipes"
+  | "automation_packages"
+  | "connections";
 
 async function listEntities<T>(kind: EntityKind): Promise<T[]> {
   const db = await ensureV2Db();
@@ -376,6 +281,38 @@ export async function saveWebRecipeV2(recipe: WebRecipe): Promise<void> {
 
 export async function deleteWebRecipeV2(id: string): Promise<void> {
   await deleteEntity("web_recipes", id);
+}
+
+export async function listAutomationPackagesV2(): Promise<AutomationPackage[]> {
+  return await listEntities<AutomationPackage>("automation_packages");
+}
+
+export async function getAutomationPackageV2(id: string): Promise<AutomationPackage | null> {
+  return await getEntity<AutomationPackage>("automation_packages", id);
+}
+
+export async function saveAutomationPackageV2(automationPackage: AutomationPackage): Promise<void> {
+  await saveEntity("automation_packages", automationPackage);
+}
+
+export async function deleteAutomationPackageV2(id: string): Promise<void> {
+  await deleteEntity("automation_packages", id);
+}
+
+export async function listConnectionsV2(): Promise<Connection[]> {
+  return await listEntities<Connection>("connections");
+}
+
+export async function getConnectionV2(id: string): Promise<Connection | null> {
+  return await getEntity<Connection>("connections", id);
+}
+
+export async function saveConnectionV2(connection: Connection): Promise<void> {
+  await saveEntity("connections", connection);
+}
+
+export async function deleteConnectionV2(id: string): Promise<void> {
+  await deleteEntity("connections", id);
 }
 
 export async function getSettingsV2(): Promise<V2AppSettings> {

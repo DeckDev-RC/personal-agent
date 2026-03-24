@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "Codex Agent"
+    "name": "K"
   },
   "nav": {
     "today": "Today",
@@ -128,6 +128,11 @@
   "statusBar": {
     "oauthConnected": "OAuth connected",
     "oauthDisconnected": "OAuth disconnected",
+    "apiKeyConfigured": "API key configured",
+    "apiKeyMissing": "API key missing",
+    "localReady": "Local runtime ready",
+    "localUnavailable": "Local runtime unavailable",
+    "connectionUnknown": "Connection unavailable",
     "remaining": "left",
     "compactAt": "compact @",
     "output": "Output",
@@ -254,7 +259,7 @@
   },
   "workspace": {
     "title": "Cowork Workspace",
-    "subtitle": "Files generated automatically by Quick Actions and organized in the default OpenClaw folders.",
+    "subtitle": "Files generated automatically by Quick Actions and organized in the local cowork folders.",
     "refresh": "Refresh",
     "rootLabel": "Root",
     "totalFiles": "Files",
@@ -297,6 +302,16 @@
     "retry": "Try again",
     "quickActionsTitle": "Quick actions",
     "quickActionsDescription": "Ready-made skills for meetings, email writing, research, and day-to-day cowork tasks.",
+    "firstRun": {
+      "title": "Next steps",
+      "description": "Take the first action without having to parse empty cards or technical states.",
+      "openChat": "New conversation",
+      "openChatDescription": "Open chat and send the first message to validate the selected provider.",
+      "connectTools": "Connect tools",
+      "connectToolsDescription": "Add Slack, Gmail, Calendar, or other integrations when they become useful.",
+      "openSettings": "Configure provider",
+      "openSettingsDescription": "Review authentication, model, and agent behavior without leaving the app."
+    },
     "stats": {
       "openTasks": "Open tasks",
       "recentOutputs": "Recent outputs",
@@ -492,8 +507,16 @@
     "success": "Success",
     "noResults": "No results",
     "comingSoon": "coming soon",
+    "back": "Back",
+    "next": "Next",
     "minimize": "Minimize",
+    "maximizeWindow": "Maximize or restore",
     "closeWindow": "Close"
+  },
+  "onboarding": {
+    "welcome": "Welcome to K",
+    "start": "Start",
+    "finish": "Start using the app"
   },
   "slashCommand": {
     "new": "New conversation",

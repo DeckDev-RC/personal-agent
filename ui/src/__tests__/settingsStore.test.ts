@@ -22,6 +22,7 @@ describe("settingsStore", () => {
         language: "pt-BR",
         themeMode: "dark",
         reasoningEffort: "medium",
+        approvalMode: "manual",
         planMode: false,
         fastMode: false,
         globalSystemPrompt: "",
@@ -68,6 +69,7 @@ describe("settingsStore", () => {
     expect(settings.language).toBe("pt-BR");
     expect(settings.themeMode).toBe("dark");
     expect(settings.reasoningEffort).toBe("medium");
+    expect(settings.approvalMode).toBe("manual");
     expect(settings.contextWindow).toBe(128000);
     expect(settings.maxOutputTokens).toBe(4096);
     expect(settings.proactivity.enabled).toBe(true);
@@ -98,7 +100,7 @@ describe("settingsStore", () => {
   it("supports provider change", async () => {
     await useSettingsStore.getState().updateSettings({ provider: "anthropic" });
     expect(useSettingsStore.getState().settings.provider).toBe("anthropic");
-    expect(useSettingsStore.getState().settings.defaultModelRef).toBe("anthropic/gpt-5.4");
+    expect(useSettingsStore.getState().settings.defaultModelRef).toBe("anthropic/claude-sonnet-4-6");
   });
 
   it("supports all language codes", async () => {

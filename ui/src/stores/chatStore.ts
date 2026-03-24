@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { AttachmentPayload } from "../../../src/types/runtime.js";
 
 export type ConversationMessage = {
   id: string;
@@ -11,6 +12,7 @@ export type ConversationMessage = {
   toolName?: string;
   phase?: string;
   kind?: string;
+  attachments?: AttachmentPayload[];
 };
 
 export type Conversation = {
@@ -71,12 +73,13 @@ type ChatState = {
   renameConversation: (id: string, title: string) => Promise<void>;
   patchActiveConversation: (patch: Partial<Conversation>) => void;
 
-  addUserMessage: (content: string) => void;
+  addUserMessage: (content: string, attachments?: AttachmentPayload[]) => void;
   addToolMessage: (params: {
     toolCallId: string;
     toolName: string;
     content: string;
     phase?: string;
+    attachments?: AttachmentPayload[];
   }) => void;
   startStreaming: (runId?: string, mode?: "simple" | "agentic") => void;
   appendDelta: (delta: string) => void;
@@ -111,7 +114,41 @@ function toSummary(item: any): ConversationSummary {
   };
 }
 
-function toConversation(payload: any): Conversation {
+function getMessageAttachmentIds(message: any): string[] {
+  const attachments = Array.isArray(message?.metadata?.attachments)
+    ? message.metadata.attachments
+    : [];
+
+  return attachments
+    .map((attachment: any) =>
+      typeof attachment?.artifactId === "string"
+        ? attachment.artifactId.trim()
+        : "",
+    )
+    .filter(Boolean);
+}
+
+async function hydrateMessageAttachments(message: any): Promise<AttachmentPayload[] | undefined> {
+  const attachmentIds = getMessageAttachmentIds(message);
+  if (attachmentIds.length === 0) {
+    return undefined;
+  }
+
+  const attachments = await Promise.all(
+    attachmentIds.map(async (artifactId) => {
+      try {
+        return (await api().attachments.get(artifactId)) as AttachmentPayload | null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  const resolved = attachments.filter((attachment): attachment is AttachmentPayload => Boolean(attachment));
+  return resolved.length > 0 ? resolved : undefined;
+}
+
+async function toConversation(payload: any): Promise<Conversation> {
   const session = payload.session ?? payload;
   const messages = payload.messages ?? session.messages ?? [];
   const hasAgenticSignals = messages.some(
@@ -131,18 +168,21 @@ function toConversation(payload: any): Conversation {
     systemPrompt: session.systemPrompt,
     workspaceId: session.workspaceId,
     workspaceRoot: session.workspaceRoot,
-    messages: messages.map((message: any) => ({
-      id: message.id,
-      role: message.role,
-      content: message.content,
-      timestamp: message.timestamp,
-      model: message.model,
-      thinkingContent: message.thinkingContent,
-      toolCallId: message.toolCallId,
-      toolName: message.toolName,
-      phase: message.phase,
-      kind: message.kind,
-    })),
+    messages: await Promise.all(
+      messages.map(async (message: any) => ({
+        id: message.id,
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp,
+        model: message.model,
+        thinkingContent: message.thinkingContent,
+        toolCallId: message.toolCallId,
+        toolName: message.toolName,
+        phase: message.phase,
+        kind: message.kind,
+        attachments: await hydrateMessageAttachments(message),
+      })),
+    ),
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     lastRunId: session.lastRunId,
@@ -196,7 +236,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   selectConversation: async (id) => {
     const payload = await api().sessions.get(id);
     if (payload) {
-      const conversation = toConversation(payload);
+      const conversation = await toConversation(payload);
       set({
         activeConversation: conversation,
         activeRunId: undefined,
@@ -240,12 +280,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ activeConversation: { ...current, ...patch } });
   },
 
-  addUserMessage: (content) => {
+  addUserMessage: (content, attachments) => {
     const current = get().activeConversation;
     if (!current) return;
+    const nextTitle =
+      current.messages.length === 0
+        ? (content.trim() || attachments?.[0]?.fileName || "New session").slice(0, 60)
+        : current.title;
     const next: Conversation = {
       ...current,
-      title: current.messages.length === 0 ? content.slice(0, 60) : current.title,
+      title: nextTitle,
       updatedAt: Date.now(),
       messages: [
         ...current.messages,
@@ -254,13 +298,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
           role: "user",
           content,
           timestamp: Date.now(),
+          attachments,
         },
       ],
     };
     set({ activeConversation: next });
   },
 
-  addToolMessage: ({ toolCallId, toolName, content, phase }) => {
+  addToolMessage: ({ toolCallId, toolName, content, phase, attachments }) => {
     const current = get().activeConversation;
     if (!current) return;
     set({
@@ -277,6 +322,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             toolCallId,
             toolName,
             phase,
+            attachments,
           },
         ],
       },

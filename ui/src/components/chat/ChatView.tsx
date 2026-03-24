@@ -28,9 +28,15 @@ import Button from "../shared/Button";
 import ContextSelector from "../context/ContextSelector";
 import ChatInput, { type ChatAgentSuggestion, type PendingAttachment } from "./ChatInput";
 import ConversationList from "./ConversationList";
+import EmptyState from "../shared/EmptyState";
 import MessageList from "./MessageList";
 import SuggestionChips from "./SuggestionChips";
 import type { ProactiveSuggestion } from "../../../../src/types/proactive.js";
+import { resolveAgentModel } from "../../../../src/settings/resolveAgentModel.js";
+import {
+  getConversationDisplayTitle,
+  shouldAutoShowAdvancedConsole,
+} from "./chatUi";
 
 const api = () => (window as any).codexAgent;
 
@@ -214,9 +220,11 @@ export default function ChatView({ sessionId }: ChatViewProps) {
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [selectedArtifactContent, setSelectedArtifactContent] = useState<string>("");
   const [draftMessage, setDraftMessage] = useState("");
+  const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [agentSuggestion, setAgentSuggestion] = useState<ChatAgentSuggestion | null>(null);
   const [dismissedSuggestionKey, setDismissedSuggestionKey] = useState("");
   const [proactiveSuggestions, setProactiveSuggestions] = useState<ProactiveSuggestion[]>([]);
+  const [manualAdvancedConsoleVisible, setManualAdvancedConsoleVisible] = useState(false);
 
   useEffect(() => {
     if (!agentsLoaded) void loadAgents();
@@ -242,6 +250,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
 
   useEffect(() => {
     resetInspectorSections();
+    setManualAdvancedConsoleVisible(false);
   }, [activeConversation?.id, resetInspectorSections]);
 
   useEffect(() => {
@@ -432,6 +441,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
           toolName: result.toolName,
           content: result.content,
           phase: result.phase,
+          attachments: Array.isArray(result.attachments) ? result.attachments : undefined,
         });
       }),
       api().onChatDone(async (result: { sessionId?: string }) => {
@@ -474,10 +484,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
   }, [selectedAgentId]);
 
   const canRunSelectedModel = useMemo(() => {
-    const modelRef =
-      activeConversation?.model ||
-      getSelectedAgent().model ||
-      settings.defaultModelRef;
+    const modelRef = activeConversation?.model || resolveAgentModel(getSelectedAgent(), settings.defaultModelRef);
     const status = getProviderStatus(modelRef);
     return status?.authenticated !== false;
   }, [activeConversation?.model, getProviderStatus, getSelectedAgent, settings.defaultModelRef]);
@@ -504,7 +511,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
       setActiveContextId(nextContextId);
     }
     createConversation(
-      agent.model || settings.defaultModelRef,
+      resolveAgentModel(agent, settings.defaultModelRef),
       buildSystemPrompt(agent),
       agent.id,
       nextContextId || undefined,
@@ -531,7 +538,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
       patchActiveConversation({
         agentId: agent.id,
         projectContextId: nextContextId || undefined,
-        model: agent.model || settings.defaultModelRef,
+        model: resolveAgentModel(agent, settings.defaultModelRef),
         systemPrompt: buildSystemPrompt(agent),
       });
     }
@@ -577,7 +584,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
     try {
       const agent = getSelectedAgent();
       const effectiveSystemPrompt = buildSystemPrompt(agent);
-      const effectiveModelRef = agent.model || settings.defaultModelRef;
+      const effectiveModelRef = resolveAgentModel(agent, settings.defaultModelRef);
       const resolvedProjectContextId =
         selectedContextId ||
         activeConversation?.projectContextId ||
@@ -637,7 +644,18 @@ export default function ChatView({ sessionId }: ChatViewProps) {
             ),
           );
 
-      addUserMessage(message);
+      addUserMessage(
+        message,
+        attachments.map((attachment, index) => ({
+          artifactId: `pending-${Date.now()}-${index}`,
+          sessionId: current.id,
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          byteSize: attachment.byteSize,
+          extractedTextAvailable: false,
+          bytesBase64: attachment.bytesBase64,
+        })),
+      );
       setAgentSuggestion(null);
       setDismissedSuggestionKey("");
       const runResult = await api().startChat({
@@ -771,6 +789,32 @@ export default function ChatView({ sessionId }: ChatViewProps) {
     await refreshSessionDetails(activeConversation.id);
   }, [activeConversation, refreshSessionDetails]);
 
+  const handleSpeakMessage = useCallback(async (messageId: string, content: string) => {
+    if (!activeConversation || activeConversation.id.startsWith("draft-")) {
+      return;
+    }
+    if (!content.trim()) {
+      return;
+    }
+
+    setSpeakingMessageId(messageId);
+    try {
+      await api().tools.invoke({
+        sessionId: activeConversation.id,
+        toolName: "text_to_speech",
+        args: {
+          text: content,
+          language: settings.language,
+        },
+      });
+      await refreshSessionDetails(activeConversation.id);
+    } catch (error) {
+      errorStreaming(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSpeakingMessageId((current) => (current === messageId ? null : current));
+    }
+  }, [activeConversation, errorStreaming, refreshSessionDetails, settings.language]);
+
   const pendingArtifact = useMemo(
     () => artifacts.find((artifact) => artifact.artifactId === selectedArtifactId) ?? null,
     [artifacts, selectedArtifactId],
@@ -795,6 +839,38 @@ export default function ChatView({ sessionId }: ChatViewProps) {
   const latestJobs = useMemo(() => jobHistory.slice(0, 6), [jobHistory]);
   const visibleTools = useMemo(() => availableTools.slice(0, 8), [availableTools]);
   const shouldShowInternal = showInternalPhases || settings.planMode || approvals.length > 0 || activeConversation?.lastRunStatus === "failed";
+  const autoAdvancedConsoleVisible = useMemo(
+    () =>
+      shouldAutoShowAdvancedConsole({
+        approvalsCount: approvals.length,
+        artifactsCount: artifacts.length,
+        toolsCount: latestTools.length,
+        jobsCount: latestJobs.length,
+        browserStatus: browserStatus?.status,
+        workspaceRoot: workspaceInput,
+        workspaceFileCount: workspaceState?.fileCount,
+        workspaceChunkCount: workspaceState?.chunkCount,
+        showInternalPhases,
+        planMode: settings.planMode,
+        lastRunStatus: activeConversation?.lastRunStatus,
+        activePhase,
+      }),
+    [
+      activeConversation?.lastRunStatus,
+      activePhase,
+      approvals.length,
+      artifacts.length,
+      browserStatus?.status,
+      latestJobs.length,
+      latestTools.length,
+      settings.planMode,
+      showInternalPhases,
+      workspaceInput,
+      workspaceState?.chunkCount,
+      workspaceState?.fileCount,
+    ],
+  );
+  const advancedConsoleVisible = autoAdvancedConsoleVisible || manualAdvancedConsoleVisible;
   const visibleMessages = useMemo(() => {
     if (!activeConversation) {
       return [];
@@ -822,6 +898,9 @@ export default function ChatView({ sessionId }: ChatViewProps) {
       { label: t("chat.console.runLabel"), value: activeRunId ? activeRunId.slice(0, 8) : activeConversation.lastRunId?.slice(0, 8) ?? t("chat.console.none") },
     ];
   }, [activeConversation, activeRunId, t]);
+  const activeConversationTitle = activeConversation
+    ? getConversationDisplayTitle(activeConversation.title, t)
+    : t("chat.console.defaultTitle");
 
   const translateStatus = useCallback(
     (status?: string) => {
@@ -879,7 +958,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
                     )}
                   </div>
                   <h1 className="mt-2 text-[18px] leading-none font-semibold text-text-primary truncate">
-                    {activeConversation?.title ?? t("chat.console.defaultTitle")}
+                    {activeConversationTitle}
                   </h1>
                 </div>
 
@@ -899,13 +978,25 @@ export default function ChatView({ sessionId }: ChatViewProps) {
                     <PhaseRail activePhase={activePhase ?? activeConversation?.lastRunPhase} />
                   </div>
                 ) : (
-                  <div />
+                  <div className="flex-1" />
                 )}
-                {uiMode === "agentic" && (
-                  <Button variant="ghost" size="sm" onClick={() => setShowInternalPhases(!showInternalPhases)}>
-                    {shouldShowInternal ? "Ocultar detalhes" : "Mostrar detalhes"}
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  {!advancedConsoleVisible && (
+                    <Button variant="ghost" size="sm" onClick={() => setManualAdvancedConsoleVisible(true)}>
+                      {t("chat.console.showConsole", "Mostrar console")}
+                    </Button>
+                  )}
+                  {manualAdvancedConsoleVisible && !autoAdvancedConsoleVisible && (
+                    <Button variant="ghost" size="sm" onClick={() => setManualAdvancedConsoleVisible(false)}>
+                      {t("chat.console.hideConsole", "Ocultar console")}
+                    </Button>
+                  )}
+                  {uiMode === "agentic" && (
+                    <Button variant="ghost" size="sm" onClick={() => setShowInternalPhases(!showInternalPhases)}>
+                      {shouldShowInternal ? t("chat.console.hideDetails", "Ocultar detalhes") : t("chat.console.showDetails", "Mostrar detalhes")}
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -918,6 +1009,8 @@ export default function ChatView({ sessionId }: ChatViewProps) {
                   streaming={streaming}
                   streamingText={streamingText}
                   thinkingText={thinkingText}
+                  onSpeakMessage={activeConversation && !activeConversation.id.startsWith("draft-") ? handleSpeakMessage : undefined}
+                  speakingMessageId={speakingMessageId}
                 />
               </div>
               <div className="border-t border-border bg-bg-primary/92">
@@ -941,18 +1034,28 @@ export default function ChatView({ sessionId }: ChatViewProps) {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <div className="text-text-secondary/40 text-sm">{t("chat.emptyState")}</div>
-              <Button variant="secondary" onClick={handleNewChat}>
-                <Plus size={14} />
-                {t("chat.newConversation")}
-              </Button>
+            <div className="flex-1 flex items-center justify-center px-5">
+              <div className="w-full max-w-md rounded-3xl border border-border bg-bg-secondary/70 p-6">
+                <EmptyState
+                  icon={<Bot size={18} />}
+                  title={t("chat.emptyState")}
+                  description={t(
+                    "chat.emptyDescription",
+                    "Escolha um agente, abra uma nova sessão e deixe o console avançado aparecer só quando houver atividade real.",
+                  )}
+                  action={{
+                    label: t("chat.newConversation"),
+                    onClick: () => void handleNewChat(),
+                  }}
+                />
+              </div>
             </div>
           )}
         </div>
 
-        <aside className="w-[300px] border-l border-border bg-bg-secondary/78 backdrop-blur overflow-y-auto shrink-0">
-          <div className="p-4 space-y-4">
+        {advancedConsoleVisible && (
+          <aside className="w-[300px] border-l border-border bg-bg-secondary/78 backdrop-blur overflow-y-auto shrink-0">
+            <div className="p-4 space-y-4">
             <SectionCard
               title={t("chat.console.workspaceTitle")}
               icon={<FolderRoot size={14} />}
@@ -1006,7 +1109,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
             </SectionCard>
 
             <SectionCard
-              title="Browser"
+              title="Navegador"
               icon={<Globe size={14} />}
               aside={
                 browserStatus?.status ? (
@@ -1028,18 +1131,18 @@ export default function ChatView({ sessionId }: ChatViewProps) {
             >
               <div className="space-y-3">
                 <div className="rounded-xl border border-border bg-bg-primary px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">Current URL</div>
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">URL atual</div>
                   <div className="mt-1 text-xs text-text-primary break-all">
-                    {browserStatus?.currentUrl ?? "No active page"}
+                    {browserStatus?.currentUrl ?? "Nenhuma página ativa"}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="rounded-xl border border-border bg-bg-primary px-3 py-2">
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">Browser artifacts</div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">Resultados do navegador</div>
                     <div className="mt-1 text-text-primary">{browserArtifacts.length}</div>
                   </div>
                   <div className="rounded-xl border border-border bg-bg-primary px-3 py-2">
-                    <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">Last activity</div>
+                    <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">Última atividade</div>
                     <div className="mt-1 text-text-primary">
                       {browserStatus?.lastActivityAt ? new Date(browserStatus.lastActivityAt).toLocaleTimeString() : "—"}
                     </div>
@@ -1047,7 +1150,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
                 </div>
                 <Button variant="secondary" size="sm" className="w-full" onClick={() => void handleBrowserReset()}>
                   <RefreshCw size={12} />
-                  Reset browser session
+                  Reiniciar sessão do navegador
                 </Button>
                 {browserArtifacts.length > 0 && (
                   <div className="space-y-2">
@@ -1190,11 +1293,11 @@ export default function ChatView({ sessionId }: ChatViewProps) {
             >
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="rounded-xl border border-border bg-bg-primary px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">Sources</div>
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">Fontes</div>
                   <div className="mt-1 text-text-primary">{memoryStatus?.sourceCount ?? 0}</div>
                 </div>
                 <div className="rounded-xl border border-border bg-bg-primary px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">Index jobs</div>
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">Jobs de índice</div>
                   <div className="mt-1 text-text-primary">{memoryStatus?.jobs?.length ?? 0}</div>
                 </div>
               </div>
@@ -1313,7 +1416,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-xs text-text-primary">{capability.label}</div>
                         <Badge color={capability.requiresApproval ? "orange" : "green"}>
-                          {capability.requiresApproval ? "approval" : "ready"}
+                          {capability.requiresApproval ? "aprovação" : "pronto"}
                         </Badge>
                       </div>
                       <div className="mt-1 text-[10px] text-text-secondary/55">
@@ -1342,7 +1445,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
                       <div className="flex items-center justify-between gap-2">
                         <div className="text-xs text-text-primary">{tool.publicName}</div>
                         <Badge color={tool.requiresApprovalNow ? "orange" : "green"}>
-                          {tool.requiresApprovalNow ? "approval" : "ready"}
+                          {tool.requiresApprovalNow ? "aprovação" : "pronto"}
                         </Badge>
                       </div>
                       <div className="mt-1 text-[10px] text-text-secondary/55">
@@ -1406,7 +1509,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
             </SectionCard>
 
             <SectionCard
-              title="Search artifacts"
+              title="Resultados de busca"
               icon={<Hammer size={14} />}
               aside={searchArtifacts.length > 0 ? <Badge color="gray">{searchArtifacts.length}</Badge> : undefined}
             >
@@ -1456,8 +1559,9 @@ export default function ChatView({ sessionId }: ChatViewProps) {
                 </div>
               </div>
             </SectionCard>
-          </div>
-        </aside>
+            </div>
+          </aside>
+        )}
       </div>
     </div>
   );

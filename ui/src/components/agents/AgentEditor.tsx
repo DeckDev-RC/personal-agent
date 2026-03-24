@@ -5,6 +5,7 @@ import { useAgentStore, type AgentConfig } from "../../stores/agentStore";
 import { useContextStore } from "../../stores/contextStore";
 import { useSkillStore, type Skill } from "../../stores/skillStore";
 import { useMcpStore, type McpServerConfig } from "../../stores/mcpStore";
+import { useSettingsStore } from "../../stores/settingsStore";
 import Button from "../shared/Button";
 import Input from "../shared/Input";
 import { TextArea } from "../shared/Input";
@@ -145,6 +146,7 @@ export default function AgentEditor({ agent, onClose }: AgentEditorProps) {
   const { t } = useTranslation();
   const { createAgent, updateAgent } = useAgentStore();
   const { contexts, loaded: contextsLoaded, loadContexts } = useContextStore();
+  const defaultModelRef = useSettingsStore((state) => state.settings.defaultModelRef);
   const isNew = !agent;
 
   const [name, setName] = useState(agent?.name ?? "");
@@ -152,7 +154,7 @@ export default function AgentEditor({ agent, onClose }: AgentEditorProps) {
   const [systemPrompt, setSystemPrompt] = useState(
     agent?.systemPrompt ?? "You are a helpful assistant.",
   );
-  const [model, setModel] = useState(agent?.model ?? "openai-codex/gpt-5.4");
+  const [model, setModel] = useState(agent?.model ?? defaultModelRef);
   const [skillIds, setSkillIds] = useState<string[]>(agent?.skillIds ?? []);
   const [mcpServerIds, setMcpServerIds] = useState<string[]>(agent?.mcpServerIds ?? []);
   const [projectContextId, setProjectContextId] = useState(agent?.projectContextId ?? "");
@@ -163,6 +165,12 @@ export default function AgentEditor({ agent, onClose }: AgentEditorProps) {
       void loadContexts();
     }
   }, [contextsLoaded, loadContexts]);
+
+  useEffect(() => {
+    if (!agent) {
+      setModel(defaultModelRef);
+    }
+  }, [agent, defaultModelRef]);
 
   async function handleSave() {
     if (!name.trim()) return;
@@ -232,7 +240,7 @@ export default function AgentEditor({ agent, onClose }: AgentEditorProps) {
             label={t("agents.model")}
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            placeholder="openai-codex/gpt-5.4"
+            placeholder={defaultModelRef}
           />
 
           <Select

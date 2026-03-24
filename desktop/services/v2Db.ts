@@ -306,6 +306,55 @@ function initSchema(db: DatabaseSync) {
       comment TEXT,
       created_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS cron_jobs (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      cron_expr TEXT NOT NULL,
+      action_type TEXT NOT NULL,
+      action_config_json TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_run INTEGER,
+      next_run INTEGER,
+      run_count INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS plugins (
+      id TEXT PRIMARY KEY,
+      manifest_json TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'installed',
+      error TEXT,
+      installed_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS subagents (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      prompt TEXT NOT NULL,
+      status TEXT NOT NULL,
+      requested_by TEXT NOT NULL,
+      parent_session_id TEXT,
+      parent_run_id TEXT,
+      session_id TEXT,
+      run_id TEXT,
+      agent_id TEXT,
+      project_context_id TEXT,
+      model_ref TEXT NOT NULL,
+      phase TEXT,
+      result_text TEXT,
+      review_text TEXT,
+      error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      started_at INTEGER,
+      completed_at INTEGER,
+      FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE SET NULL,
+      FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE SET NULL
+    );
   `);
 }
 

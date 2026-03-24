@@ -1,0 +1,13 @@
+{
+  "id": "mcp-linear",
+  "name": "Linear",
+  "description": "Gerenciar issues, projetos e ciclos no Linear.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@anthropic/mcp-linear"],
+  "env": {
+    "LINEAR_API_KEY": ""
+  },
+  "autoConnect": false,
+  "tags": ["dev", "linear", "issues", "project-management"]
+}

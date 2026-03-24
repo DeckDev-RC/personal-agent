@@ -1,0 +1,14 @@
+{
+  "id": "mcp-slack",
+  "name": "Slack",
+  "description": "Enviar mensagens, listar canais e interagir com workspaces Slack.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@anthropic/mcp-slack"],
+  "env": {
+    "SLACK_BOT_TOKEN": "",
+    "SLACK_TEAM_ID": ""
+  },
+  "autoConnect": false,
+  "tags": ["messaging", "slack", "productivity"]
+}

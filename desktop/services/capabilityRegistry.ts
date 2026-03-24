@@ -42,8 +42,14 @@ const CAPABILITY_RULES: CapabilityRule[] = [
   {
     capabilityId: "web-search",
     label: "Web Search",
-    description: "Query an external web search provider.",
-    match: (tool) => tool.source === "native" && tool.actualName === "web_search",
+    description: "Query an external search provider or fetch a web resource.",
+    match: (tool) => tool.source === "native" && ["web_search", "http_fetch"].includes(tool.actualName),
+  },
+  {
+    capabilityId: "media",
+    label: "Media",
+    description: "Generate or transform rich media assets such as images and audio.",
+    match: (tool) => tool.source === "native" && ["generate_image", "text_to_speech"].includes(tool.actualName),
   },
   {
     capabilityId: "browser",

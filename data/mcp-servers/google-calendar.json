@@ -1,0 +1,15 @@
+{
+  "id": "mcp-google-calendar",
+  "name": "Google Calendar",
+  "description": "Criar, listar e gerenciar eventos do Google Calendar.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@anthropic/mcp-google-calendar"],
+  "env": {
+    "GOOGLE_CLIENT_ID": "",
+    "GOOGLE_CLIENT_SECRET": "",
+    "GOOGLE_REDIRECT_URI": "http://localhost:3456/callback"
+  },
+  "autoConnect": false,
+  "tags": ["calendar", "google", "productivity"]
+}

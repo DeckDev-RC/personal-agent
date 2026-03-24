@@ -9,10 +9,13 @@ type SelectProps = {
 };
 
 export default function Select({ value, onChange, options, label, disabled = false }: SelectProps) {
+  const inputId = React.useId();
+
   return (
     <div className="flex flex-col gap-1.5">
-      {label && <label className="text-xs font-medium text-text-secondary">{label}</label>}
+      {label && <label htmlFor={inputId} className="text-xs font-medium text-text-secondary">{label}</label>}
       <select
+        id={inputId}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}

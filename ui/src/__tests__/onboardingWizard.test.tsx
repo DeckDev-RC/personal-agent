@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "../i18n";
 import OnboardingWizard from "../components/onboarding/OnboardingWizard";
+import WindowTitleBar from "../components/layout/WindowTitleBar";
 import { useAuthStore } from "../stores/authStore";
 import { useContextStore } from "../stores/contextStore";
+import { useRuntimeStore } from "../stores/runtimeStore";
 import { useSettingsStore } from "../stores/settingsStore";
 
 const mockStore = (window as any).codexAgent.store;
 const mockAuth = (window as any).codexAgent.auth;
+const mockRuntimeStatus = (window as any).codexAgent.getRuntimeStatus;
 
 describe("OnboardingWizard", () => {
   beforeEach(() => {
@@ -37,10 +40,22 @@ describe("OnboardingWizard", () => {
         },
       ],
     });
+    (window as any).codexAgent.getRuntimeStatus = vi.fn().mockResolvedValue({
+      activeProvider: "anthropic",
+      activeModelRef: "anthropic/claude-sonnet-4-6",
+      authenticated: true,
+      modelContextWindow: 128000,
+      maxOutputTokens: 4096,
+      mcpConnectedCount: 0,
+      mcpEnabledCount: 0,
+      usageWindows: [],
+      providerStatuses: [],
+    });
 
     useSettingsStore.setState({
       settings: {
         provider: "openai-codex",
+        fallbackProviders: [],
         defaultModelRef: "openai-codex/gpt-5.4",
         fastModelRef: "openai-codex/gpt-5.4-mini",
         reviewModelRef: "openai-codex/gpt-5.4",
@@ -50,6 +65,7 @@ describe("OnboardingWizard", () => {
         language: "pt-BR",
         themeMode: "dark",
         reasoningEffort: "medium",
+        approvalMode: "manual",
         planMode: false,
         fastMode: false,
         onboardingCompleted: false,
@@ -100,6 +116,10 @@ describe("OnboardingWizard", () => {
       loaded: true,
       activeContextId: "",
     });
+    useRuntimeStore.setState({
+      status: null,
+      loading: false,
+    });
   });
 
   it("persists the provider selection and finishes onboarding with synced stores", async () => {
@@ -107,16 +127,17 @@ describe("OnboardingWizard", () => {
     render(<OnboardingWizard onComplete={onComplete} />);
 
     fireEvent.click(screen.getByRole("button", { name: /come/i }));
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "anthropic" } });
+    fireEvent.change(screen.getByRole("combobox", { name: /provider/i }), { target: { value: "anthropic" } });
     fireEvent.change(screen.getByPlaceholderText("sk-ant-..."), {
       target: { value: "sk-ant-test" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /próximo|proximo/i }));
 
     await waitFor(() => {
       expect(mockAuth.save).toHaveBeenCalledWith({
         provider: "anthropic",
         apiKey: "sk-ant-test",
+        baseUrl: "https://api.anthropic.com",
       });
     });
 
@@ -133,6 +154,7 @@ describe("OnboardingWizard", () => {
     });
 
     expect(useSettingsStore.getState().settings.onboardingCompleted).toBe(true);
+    expect((window as any).codexAgent.getRuntimeStatus).toHaveBeenCalled();
     expect(mockStore.saveSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         provider: "anthropic",
@@ -144,5 +166,25 @@ describe("OnboardingWizard", () => {
         onboardingCompleted: true,
       }),
     );
+  });
+
+  it("renders window controls", () => {
+    const toggleMaximizeWindow = vi.fn();
+    const minimizeWindow = vi.fn();
+    const closeWindow = vi.fn();
+
+    (window as any).codexAgent.toggleMaximizeWindow = toggleMaximizeWindow;
+    (window as any).codexAgent.minimizeWindow = minimizeWindow;
+    (window as any).codexAgent.closeWindow = closeWindow;
+
+    render(<WindowTitleBar />);
+
+    fireEvent.click(screen.getByRole("button", { name: /minimizar|minimize/i }));
+    fireEvent.click(screen.getByRole("button", { name: /maximizar|maximize/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^fechar$|^close$/i }));
+
+    expect(minimizeWindow).toHaveBeenCalledTimes(1);
+    expect(toggleMaximizeWindow).toHaveBeenCalledTimes(1);
+    expect(closeWindow).toHaveBeenCalledTimes(1);
   });
 });

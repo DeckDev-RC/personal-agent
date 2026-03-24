@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import "./i18n";
 import Shell from "./components/layout/Shell";
 import OnboardingWizard from "./components/onboarding/OnboardingWizard";
+import { useSettingsStore } from "./stores/settingsStore";
 
 declare global {
   interface Window {
@@ -10,26 +11,20 @@ declare global {
 }
 
 export default function App() {
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [checked, setChecked] = useState(false);
+  const { settings, loaded, loadSettings } = useSettingsStore();
 
   useEffect(() => {
-    (window as any).codexAgent?.store?.getSettings?.().then((settings: any) => {
-      if (settings && !settings.onboardingCompleted) {
-        setShowOnboarding(true);
-      }
-      setChecked(true);
-    }).catch(() => setChecked(true));
-  }, []);
+    if (!loaded) {
+      void loadSettings();
+    }
+  }, [loaded, loadSettings]);
 
-  if (!checked) return null;
+  if (!loaded) return null;
 
   return (
     <>
-      {showOnboarding && (
-        <OnboardingWizard onComplete={() => setShowOnboarding(false)} />
-      )}
       <Shell />
+      {!settings.onboardingCompleted ? <OnboardingWizard /> : null}
     </>
   );
 }

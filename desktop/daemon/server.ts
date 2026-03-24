@@ -2,6 +2,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from "node:crypto";
 import type { AddressInfo } from "node:net";
 import type { DaemonEnvelope, DaemonHealthStatus } from "../../src/types/daemon.js";
+import type { AutomationPackage } from "../../src/types/automation.js";
+import type { Connection } from "../../src/types/connection.js";
 import type { Workflow } from "../../src/types/workflow.js";
 import type { JobRecord } from "../../src/types/runtime.js";
 import type { AgentConfig, AgentSuggestion } from "../../src/types/agent.js";
@@ -19,7 +21,7 @@ import { computeNextWorkflowScheduleRunAt, normalizeWorkflowSchedule, validateWo
 import type { V2AppSettings } from "../services/v2EntityStore.js";
 import { enqueueScopedJob } from "../services/jobQueue.js";
 import * as mcp from "../services/mcpManager.js";
-import { saveAttachment } from "../services/attachmentService.js";
+import { getAttachmentPayload, saveAttachment } from "../services/attachmentService.js";
 import {
   abortRun,
   resolveRunApproval,
@@ -54,6 +56,12 @@ import { suggestAgentForPrompt } from "../services/agentRouter.js";
 import { getProactiveSuggestions } from "../services/proactiveEngine.js";
 import { getKnowledgeStatus, searchKnowledgeBase, syncKnowledgeBase } from "../services/knowledgeBase.js";
 import {
+  activateAutomationPackage,
+  deactivateAutomationPackage,
+  inspectAutomationPackageState,
+  validateAutomationPackageState,
+} from "../services/automationActivation.js";
+import {
   deleteWebRecipe,
   executeWebRecipe,
   getWebRecipe,
@@ -65,6 +73,7 @@ import {
 } from "../services/webRecipes.js";
 import { completeTask, createTask, deleteTask, getTask, listTasks, updateTask } from "../services/taskManager.js";
 import { createDraft, deleteDraft, getDraft, listDrafts, sendDraft, updateDraft } from "../services/communicationHub.js";
+import { listUnifiedInbox } from "../services/inboxAggregator.js";
 import { getWeeklyReport, listEvents, trackEvent } from "../services/analyticsCollector.js";
 import { buildPersonaInstructions, deleteFeedback, getFeedbackStats, getPersonaConfig, listFeedback, savePersonaConfig, submitFeedback } from "../services/personaManager.js";
 import { exportData, getSyncConfig, importFromPath, syncToPath, updateSyncConfig } from "../services/syncManager.js";
@@ -74,23 +83,58 @@ import {
   stopConnectivityMonitor,
 } from "../services/connectivityMonitor.js";
 import {
+  createJob as createCronJob,
+  deleteJob as deleteCronJob,
+  getJob as getCronJob,
+  initScheduler as initCronScheduler,
+  listJobs as listCronJobs,
+  setJobExecutor,
+  stopScheduler as stopCronScheduler,
+  toggleJob as toggleCronJob,
+  updateJob as updateCronJob,
+  type CronJob,
+} from "../services/cronScheduler.js";
+import {
+  activatePlugin,
+  deactivatePlugin,
+  installPlugin,
+  listPlugins,
+  uninstallPlugin,
+} from "../services/pluginLoader.js";
+import type { PluginManifest } from "../../src/types/plugin.js";
+import {
+  bindSubagentExecutor,
+  getSubagent,
+  listSubagents,
+  markSubagentAborted,
+  spawnSubagent,
+} from "../services/subagentManager.js";
+import {
+  deleteAutomationPackageV2,
   deleteAgentV2,
+  deleteConnectionV2,
   deleteMcpServerV2,
   deleteProjectContextV2,
   deleteSkillV2,
   deleteWorkflowV2,
+  getAutomationPackageV2,
   getAgentV2,
+  getConnectionV2,
   getMcpServerV2,
   getProjectContextV2,
   getSettingsV2,
   getSkillV2,
   getWorkflowV2,
+  listAutomationPackagesV2,
   listAgentsV2,
+  listConnectionsV2,
   listMcpServersV2,
   listProjectContextsV2,
   listSkillsV2,
   listWorkflowsV2,
+  saveAutomationPackageV2,
   saveAgentV2,
+  saveConnectionV2,
   saveMcpServerV2,
   saveProjectContextV2,
   saveSettingsV2,
@@ -116,6 +160,40 @@ import {
   searchMemoryRecords,
 } from "../services/v2SessionStore.js";
 import { publishDaemonEvent, publishJobUpdate, publishRuntimeEvent, subscribeDaemonEvents } from "./state.js";
+
+bindSubagentExecutor(async (params) => {
+  publishDaemonEvent({
+    event: "run.queued",
+    data: {
+      runId: randomUUID(),
+      sessionId: params.parentSessionId ?? "pending",
+    },
+  });
+
+  const result = await startPromptRun({
+    title: params.title,
+    agentId: params.agentId,
+    projectContextId: params.projectContextId,
+    modelRef: params.modelRef,
+    systemPrompt: params.systemPrompt,
+    prompt: params.prompt,
+    mcpServerIds: params.mcpServerIds,
+    onEvent: (event) => {
+      params.onEvent(event);
+      publishRuntimeEvent(event);
+    },
+  });
+
+  publishDaemonEvent({
+    event: "run.started",
+    data: {
+      runId: result.runId,
+      sessionId: result.sessionId,
+    },
+  });
+
+  return result;
+});
 
 type ScheduledWorkflow = {
   workflowId: string;
@@ -216,6 +294,10 @@ export class CodexAgentDaemon {
         data: { reminder },
       });
     });
+    setJobExecutor(async (job) => {
+      await this.runCronJob(job);
+    });
+    await initCronScheduler();
     await new Promise<void>((resolve) => this.server.listen(port, "127.0.0.1", resolve));
     return (this.server.address() as AddressInfo).port;
   }
@@ -226,6 +308,8 @@ export class CodexAgentDaemon {
     }
     this.scheduledWorkflows.clear();
     await stopReminderScheduler();
+    setJobExecutor(null);
+    stopCronScheduler();
     stopConnectivityMonitor();
     await closeAllBrowserSessions();
     await mcp.disconnectAll();
@@ -361,6 +445,35 @@ export class CodexAgentDaemon {
     );
   }
 
+  private async runCronJob(job: CronJob): Promise<void> {
+    if (job.actionType !== "workflow") {
+      throw new Error(`Cron action "${job.actionType}" is not executable yet.`);
+    }
+
+    const workflowId =
+      typeof job.actionConfig.workflowId === "string"
+        ? job.actionConfig.workflowId.trim()
+        : "";
+    if (!workflowId) {
+      throw new Error(`Cron job ${job.id} is missing actionConfig.workflowId.`);
+    }
+
+    const workflow = await getWorkflowV2(workflowId);
+    if (!workflow) {
+      throw new Error(`Workflow not found: ${workflowId}`);
+    }
+
+    const settings = await getSettingsV2();
+    await startWorkflowRun({
+      workflow,
+      modelRef: settings.defaultModelRef,
+      systemPrompt:
+        settings.globalSystemPrompt || "You are a helpful AI assistant.",
+      trigger: "cron",
+      onEvent: publishRuntimeEvent,
+    });
+  }
+
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (!this.isAuthorized(req)) {
       sendJson(res, 401, { ok: false, error: "Unauthorized" });
@@ -417,6 +530,8 @@ export class CodexAgentDaemon {
         workflows: listWorkflowsV2,
         mcp: listMcpServersV2,
         contexts: listProjectContextsV2,
+        automation_packages: listAutomationPackagesV2,
+        connections: listConnectionsV2,
       } as const;
       const getMap = {
         agents: getAgentV2,
@@ -424,6 +539,8 @@ export class CodexAgentDaemon {
         workflows: getWorkflowV2,
         mcp: getMcpServerV2,
         contexts: getProjectContextV2,
+        automation_packages: getAutomationPackageV2,
+        connections: getConnectionV2,
       } as const;
       if (kind in listMap) {
         sendJson(res, 200, id ? await getMap[kind as keyof typeof getMap](id) : await listMap[kind as keyof typeof listMap]());
@@ -460,6 +577,10 @@ export class CodexAgentDaemon {
         await saveMcpServerV2(body as McpServerConfig);
       } else if (kind === "contexts") {
         await saveProjectContextV2(body as ProjectContext);
+      } else if (kind === "automation_packages") {
+        await saveAutomationPackageV2(body as AutomationPackage);
+      } else if (kind === "connections") {
+        await saveConnectionV2(body as Connection);
       } else {
         sendNotFound(res);
         return;
@@ -482,12 +603,72 @@ export class CodexAgentDaemon {
         await deleteMcpServerV2(id);
       } else if (kind === "contexts") {
         await deleteProjectContextV2(id);
+      } else if (kind === "automation_packages") {
+        await deleteAutomationPackageV2(id);
+      } else if (kind === "connections") {
+        await deleteConnectionV2(id);
       } else {
         sendNotFound(res);
         return;
       }
       sendJson(res, 200, { ok: true });
       return;
+    }
+
+    if (
+      pathParts[0] === "automation" &&
+      pathParts[1] === "packages" &&
+      pathParts[2]
+    ) {
+      const packageId = pathParts[2];
+
+      if (method === "GET" && pathParts[3] === "inspect") {
+        try {
+          sendJson(res, 200, await inspectAutomationPackageState(packageId));
+        } catch (error) {
+          sendJson(res, 404, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === "POST" && pathParts[3] === "validate") {
+        try {
+          sendJson(res, 200, await validateAutomationPackageState(packageId));
+        } catch (error) {
+          sendJson(res, 404, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === "POST" && pathParts[3] === "activate") {
+        try {
+          sendJson(res, 200, await activateAutomationPackage(packageId));
+        } catch (error) {
+          sendJson(res, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
+
+      if (method === "POST" && pathParts[3] === "deactivate") {
+        try {
+          sendJson(res, 200, await deactivateAutomationPackage(packageId));
+        } catch (error) {
+          sendJson(res, 400, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return;
+      }
     }
 
     if (url.pathname === "/agents/suggest" && method === "POST") {
@@ -623,6 +804,47 @@ export class CodexAgentDaemon {
       return;
     }
 
+    if (url.pathname === "/subagents" && method === "GET") {
+      sendJson(res, 200, await listSubagents({
+        status: (url.searchParams.get("status") as any) ?? undefined,
+        parentSessionId: url.searchParams.get("parentSessionId") ?? undefined,
+        requestedBy: (url.searchParams.get("requestedBy") as any) ?? undefined,
+        limit: url.searchParams.get("limit") ? Number(url.searchParams.get("limit")) : undefined,
+      }));
+      return;
+    }
+
+    if (url.pathname === "/subagents/spawn" && method === "POST") {
+      sendJson(res, 200, await spawnSubagent(await readJson(req)));
+      return;
+    }
+
+    if (pathParts[0] === "subagents" && pathParts[1]) {
+      const subagentId = pathParts[1];
+      if (method === "GET" && !pathParts[2]) {
+        const subagent = await getSubagent(subagentId);
+        if (!subagent) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, subagent);
+        return;
+      }
+
+      if (method === "POST" && pathParts[2] === "cancel") {
+        const subagent = await getSubagent(subagentId);
+        if (!subagent) {
+          sendNotFound(res);
+          return;
+        }
+        if (subagent.runId) {
+          abortRun(subagent.runId);
+        }
+        sendJson(res, 200, await markSubagentAborted(subagentId));
+        return;
+      }
+    }
+
     if (url.pathname === "/approvals" && method === "GET") {
       sendJson(res, 200, await listApprovalRecords(url.searchParams.get("sessionId") ?? undefined));
       return;
@@ -637,7 +859,12 @@ export class CodexAgentDaemon {
     }
 
     if (pathParts[0] === "attachments" && pathParts[1] && method === "GET") {
-      sendJson(res, 200, await getArtifactRecord(pathParts[1]));
+      const attachment = await getAttachmentPayload(pathParts[1]);
+      if (!attachment) {
+        sendNotFound(res);
+        return;
+      }
+      sendJson(res, 200, attachment);
       return;
     }
 
@@ -832,11 +1059,23 @@ export class CodexAgentDaemon {
       const body = await readJson<{
         sessionId: string;
         action:
+          | "browser_tabs"
           | "browser_open"
           | "browser_snapshot"
+          | "browser_console_messages"
+          | "browser_page_errors"
+          | "browser_network_requests"
           | "browser_click"
+          | "browser_hover"
           | "browser_type"
+          | "browser_drag"
+          | "browser_select"
+          | "browser_fill"
           | "browser_wait"
+          | "browser_evaluate"
+          | "browser_batch"
+          | "browser_set_input_files"
+          | "browser_handle_dialog"
           | "browser_screenshot"
           | "browser_extract_text"
           | "browser_close";
@@ -1163,6 +1402,23 @@ export class CodexAgentDaemon {
     }
 
     // --- Drafts (Communication Hub) ---
+    if (url.pathname === "/inbox" && method === "GET") {
+      const limit = Number(url.searchParams.get("limit") ?? "0");
+      const channel = url.searchParams.get("channel") ?? undefined;
+      const query = url.searchParams.get("query") ?? undefined;
+      sendJson(
+        res,
+        200,
+        await listUnifiedInbox({
+          limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
+          onlyUnread: url.searchParams.get("onlyUnread") === "true",
+          query,
+          channel: channel ? (channel as any) : undefined,
+        }),
+      );
+      return;
+    }
+
     if (url.pathname === "/drafts" && method === "GET") {
       const status = url.searchParams.get("status") as any ?? undefined;
       const type = url.searchParams.get("type") as any ?? undefined;
@@ -1275,6 +1531,101 @@ export class CodexAgentDaemon {
     if (url.pathname === "/connectivity" && method === "GET") {
       sendJson(res, 200, getConnectivityState());
       return;
+    }
+
+    // --- Cron / Scheduled Tasks ---
+    if (url.pathname === "/cron" && method === "GET") {
+      sendJson(res, 200, await listCronJobs());
+      return;
+    }
+
+    if (url.pathname === "/cron" && method === "POST") {
+      sendJson(res, 200, await createCronJob(await readJson(req)));
+      return;
+    }
+
+    if (pathParts[0] === "cron" && pathParts[1]) {
+      const cronId = pathParts[1];
+      if (method === "GET" && !pathParts[2]) {
+        const job = await getCronJob(cronId);
+        if (!job) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, job);
+        return;
+      }
+      if (method === "PATCH" && !pathParts[2]) {
+        const job = await updateCronJob(cronId, await readJson(req));
+        if (!job) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, job);
+        return;
+      }
+      if (method === "DELETE" && !pathParts[2]) {
+        const deleted = await deleteCronJob(cronId);
+        if (!deleted) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+      if (method === "POST" && pathParts[2] === "toggle") {
+        const body = await readJson<{ enabled: boolean }>(req);
+        const job = await toggleCronJob(cronId, body.enabled);
+        if (!job) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, job);
+        return;
+      }
+    }
+
+    // --- Plugins ---
+    if (url.pathname === "/plugins" && method === "GET") {
+      sendJson(res, 200, await listPlugins());
+      return;
+    }
+
+    if (url.pathname === "/plugins" && method === "POST") {
+      const manifest = await readJson<PluginManifest>(req);
+      sendJson(res, 200, await installPlugin(manifest));
+      return;
+    }
+
+    if (pathParts[0] === "plugins" && pathParts[1]) {
+      const pluginId = pathParts[1];
+      if (method === "POST" && pathParts[2] === "activate") {
+        const result = await activatePlugin(pluginId);
+        if (!result) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, result);
+        return;
+      }
+      if (method === "POST" && pathParts[2] === "deactivate") {
+        const result = await deactivatePlugin(pluginId);
+        if (!result) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, result);
+        return;
+      }
+      if (method === "DELETE" && !pathParts[2]) {
+        const deleted = await uninstallPlugin(pluginId);
+        if (!deleted) {
+          sendNotFound(res);
+          return;
+        }
+        sendJson(res, 200, { ok: true });
+        return;
+      }
     }
 
     sendNotFound(res);

@@ -9,11 +9,13 @@ import {
   MessageSquareQuote,
   Plug,
   RefreshCw,
+  Settings,
   SendHorizonal,
   Sparkles,
 } from "lucide-react";
 import type { McpServerStatus } from "../../../../src/types/mcp.js";
 import type { ProactiveSuggestion } from "../../../../src/types/proactive.js";
+import { isFirstRunDashboard } from "./dashboardUi";
 import AgendaWidget from "./AgendaWidget";
 import RecentActivity from "./RecentActivity";
 import TasksWidget from "./TasksWidget";
@@ -134,6 +136,13 @@ export default function DayView() {
   const connectedMcp = connectedStatuses(mcpStatuses);
   const connectedCatalogIds = getConnectedCatalogIds();
   const calendarConnected = connectedCatalogIds.includes("google-calendar");
+  const firstRunDashboard = isFirstRunDashboard({
+    tasksCount: tasks.length,
+    sessionsCount: sessions.length,
+    filesCount: files.length,
+    manualAgendaCount: manualAgenda.length,
+    connectedMcpCount: connectedMcp.length,
+  });
 
   const runQuickPrompt = useCallback(async (promptValue: string) => {
     const prompt = promptValue.trim();
@@ -354,40 +363,109 @@ export default function DayView() {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
-              <div className="rounded-2xl border border-border bg-bg-primary/80 px-4 py-4">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">
-                  {t("dashboard.stats.openTasks")}
+            {firstRunDashboard ? (
+              <div className="rounded-2xl border border-border bg-bg-primary/80 p-4">
+                <div className="text-sm font-semibold text-text-primary">
+                  {t("dashboard.firstRun.title", "Próximos passos")}
                 </div>
-                <div className="mt-2 text-2xl font-semibold text-text-primary">{openTasks.length}</div>
+                <p className="mt-1 text-xs text-text-secondary/70">
+                  {t(
+                    "dashboard.firstRun.description",
+                    "Faça o primeiro movimento sem precisar interpretar cards vazios ou estados técnicos.",
+                  )}
+                </p>
+                <div className="mt-4 space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setRoute("chat")}
+                    className="flex w-full items-start gap-3 rounded-2xl border border-border bg-bg-secondary px-4 py-4 text-left transition-colors hover:bg-white/5"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-blue/10 text-accent-blue">
+                      <MessageSquareQuote size={16} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-text-primary">
+                        {t("dashboard.firstRun.openChat", "Nova conversa")}
+                      </div>
+                      <div className="mt-1 text-xs text-text-secondary/70">
+                        {t("dashboard.firstRun.openChatDescription", "Abra o chat e envie a primeira mensagem para validar o provider escolhido.")}
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRoute("mcp")}
+                    className="flex w-full items-start gap-3 rounded-2xl border border-border bg-bg-secondary px-4 py-4 text-left transition-colors hover:bg-white/5"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-green/10 text-accent-green">
+                      <Plug size={16} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-text-primary">
+                        {t("dashboard.firstRun.connectTools", "Conectar ferramentas")}
+                      </div>
+                      <div className="mt-1 text-xs text-text-secondary/70">
+                        {t("dashboard.firstRun.connectToolsDescription", "Adicione Slack, Gmail, Calendar ou outras integrações quando fizer sentido para a rotina.")}
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRoute("settings")}
+                    className="flex w-full items-start gap-3 rounded-2xl border border-border bg-bg-secondary px-4 py-4 text-left transition-colors hover:bg-white/5"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-orange/10 text-accent-orange">
+                      <Settings size={16} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-text-primary">
+                        {t("dashboard.firstRun.openSettings", "Configurar provider")}
+                      </div>
+                      <div className="mt-1 text-xs text-text-secondary/70">
+                        {t("dashboard.firstRun.openSettingsDescription", "Revise auth, modelo e comportamento do agente sem sair do app.")}
+                      </div>
+                    </div>
+                  </button>
+                </div>
               </div>
-              <div className="rounded-2xl border border-border bg-bg-primary/80 px-4 py-4">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">
-                  {t("dashboard.stats.recentOutputs")}
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
+                <div className="rounded-2xl border border-border bg-bg-primary/80 px-4 py-4">
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">
+                    {t("dashboard.stats.openTasks")}
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-text-primary">{openTasks.length}</div>
                 </div>
-                <div className="mt-2 text-2xl font-semibold text-text-primary">{files.length}</div>
+                <div className="rounded-2xl border border-border bg-bg-primary/80 px-4 py-4">
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">
+                    {t("dashboard.stats.recentOutputs")}
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-text-primary">{files.length}</div>
+                </div>
+                <div className="rounded-2xl border border-border bg-bg-primary/80 px-4 py-4">
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">
+                    {t("dashboard.stats.connectedMcp")}
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-text-primary">
+                    {connectedMcp.length}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-border bg-bg-primary/80 px-4 py-4">
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">
+                    {t("dashboard.stats.manualAgenda")}
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-text-primary">
+                    {manualAgenda.length}
+                  </div>
+                </div>
               </div>
-              <div className="rounded-2xl border border-border bg-bg-primary/80 px-4 py-4">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">
-                  {t("dashboard.stats.connectedMcp")}
-                </div>
-                <div className="mt-2 text-2xl font-semibold text-text-primary">
-                  {connectedMcp.length}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-border bg-bg-primary/80 px-4 py-4">
-                <div className="text-[10px] uppercase tracking-[0.12em] text-text-secondary/55">
-                  {t("dashboard.stats.manualAgenda")}
-                </div>
-                <div className="mt-2 text-2xl font-semibold text-text-primary">
-                  {manualAgenda.length}
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </section>
 
-        {proactiveSuggestions.length > 0 && (
+        {!firstRunDashboard && proactiveSuggestions.length > 0 && (
           <section className="rounded-2xl border border-border bg-bg-secondary/70 p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -443,95 +521,97 @@ export default function DayView() {
           </section>
         )}
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr),minmax(360px,0.95fr)]">
-          <div className="space-y-6">
-            <AgendaWidget
-              items={manualAgenda}
-              calendarConnected={calendarConnected}
-              onAdd={addManualAgendaItem}
-              onToggle={toggleManualAgendaItem}
-              onRemove={removeManualAgendaItem}
-            />
+        {!firstRunDashboard && (
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr),minmax(360px,0.95fr)]">
+            <div className="space-y-6">
+              <AgendaWidget
+                items={manualAgenda}
+                calendarConnected={calendarConnected}
+                onAdd={addManualAgendaItem}
+                onToggle={toggleManualAgendaItem}
+                onRemove={removeManualAgendaItem}
+              />
 
-            <RecentActivity
-              sessions={sessions}
-              files={files}
-              contextLabels={contextLabels}
-              onOpenConversation={(sessionId) => setRoute("chat", sessionId)}
-              onOpenWorkspaceFile={(relativePath) =>
-                setRoute("workspace", encodeURIComponent(relativePath))
-              }
-            />
-          </div>
+              <RecentActivity
+                sessions={sessions}
+                files={files}
+                contextLabels={contextLabels}
+                onOpenConversation={(sessionId) => setRoute("chat", sessionId)}
+                onOpenWorkspaceFile={(relativePath) =>
+                  setRoute("workspace", encodeURIComponent(relativePath))
+                }
+              />
+            </div>
 
-          <div className="space-y-6">
-            <TasksWidget
-              tasks={tasks}
-              contextLabels={contextLabels}
-              onOpenTasks={() => setRoute("tasks")}
-            />
+            <div className="space-y-6">
+              <TasksWidget
+                tasks={tasks}
+                contextLabels={contextLabels}
+                onOpenTasks={() => setRoute("tasks")}
+              />
 
-            <section className="rounded-2xl border border-border bg-bg-secondary/70 p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-                    <Plug size={16} className="text-accent-green" />
-                    {t("dashboard.mcp.title")}
-                  </div>
-                  <p className="mt-1 text-xs text-text-secondary/70">
-                    {t("dashboard.mcp.description")}
-                  </p>
-                </div>
-                <Button variant="secondary" size="sm" onClick={() => setRoute("mcp")}>
-                  {t("dashboard.mcp.manage")}
-                </Button>
-              </div>
-
-              {connectedMcp.length === 0 ? (
-                <EmptyState
-                  icon={<Plug size={18} />}
-                  title={t("dashboard.mcp.emptyTitle")}
-                  description={t("dashboard.mcp.emptyDescription")}
-                  action={{
-                    label: t("dashboard.mcp.manage"),
-                    onClick: () => setRoute("mcp"),
-                  }}
-                />
-              ) : (
-                <div className="mt-4 space-y-2">
-                  {connectedMcp.map((status) => (
-                    <div key={status.id} className="rounded-xl border border-border bg-bg-primary px-3 py-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-text-primary">{status.id}</div>
-                          <div className="mt-1 text-[11px] text-text-secondary/60">
-                            {status.toolCount} tools
-                          </div>
-                        </div>
-                        <Badge color={status.error ? "orange" : "green"}>
-                          {status.error ? t("dashboard.mcp.error") : t("dashboard.mcp.ready")}
-                        </Badge>
-                      </div>
+              <section className="rounded-2xl border border-border bg-bg-secondary/70 p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+                      <Plug size={16} className="text-accent-green" />
+                      {t("dashboard.mcp.title")}
                     </div>
-                  ))}
+                    <p className="mt-1 text-xs text-text-secondary/70">
+                      {t("dashboard.mcp.description")}
+                    </p>
+                  </div>
+                  <Button variant="secondary" size="sm" onClick={() => setRoute("mcp")}>
+                    {t("dashboard.mcp.manage")}
+                  </Button>
                 </div>
-              )}
-            </section>
 
-            <section className="rounded-2xl border border-border bg-bg-secondary/70 p-5">
-              <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
-                <FolderOpen size={16} className="text-accent-blue" />
-                {t("dashboard.quickActionsTitle")}
-              </div>
-              <p className="mt-1 text-xs text-text-secondary/70">
-                {t("dashboard.quickActionsDescription")}
-              </p>
-              <div className="mt-3">
-                <QuickActions />
-              </div>
-            </section>
+                {connectedMcp.length === 0 ? (
+                  <EmptyState
+                    icon={<Plug size={18} />}
+                    title={t("dashboard.mcp.emptyTitle")}
+                    description={t("dashboard.mcp.emptyDescription")}
+                    action={{
+                      label: t("dashboard.mcp.manage"),
+                      onClick: () => setRoute("mcp"),
+                    }}
+                  />
+                ) : (
+                  <div className="mt-4 space-y-2">
+                    {connectedMcp.map((status) => (
+                      <div key={status.id} className="rounded-xl border border-border bg-bg-primary px-3 py-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium text-text-primary">{status.id}</div>
+                            <div className="mt-1 text-[11px] text-text-secondary/60">
+                              {status.toolCount} tools
+                            </div>
+                          </div>
+                          <Badge color={status.error ? "orange" : "green"}>
+                            {status.error ? t("dashboard.mcp.error") : t("dashboard.mcp.ready")}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="rounded-2xl border border-border bg-bg-secondary/70 p-5">
+                <div className="flex items-center gap-2 text-sm font-semibold text-text-primary">
+                  <FolderOpen size={16} className="text-accent-blue" />
+                  {t("dashboard.quickActionsTitle")}
+                </div>
+                <p className="mt-1 text-xs text-text-secondary/70">
+                  {t("dashboard.quickActionsDescription")}
+                </p>
+                <div className="mt-3">
+                  <QuickActions />
+                </div>
+              </section>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

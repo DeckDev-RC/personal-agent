@@ -1,0 +1,14 @@
+{
+  "id": "mcp-google-drive",
+  "name": "Google Drive",
+  "description": "Buscar, ler e criar arquivos no Google Drive.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@anthropic/mcp-google-drive"],
+  "env": {
+    "GOOGLE_CLIENT_ID": "",
+    "GOOGLE_CLIENT_SECRET": ""
+  },
+  "autoConnect": false,
+  "tags": ["storage", "google", "files"]
+}

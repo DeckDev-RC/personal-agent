@@ -10,16 +10,36 @@ import {
 } from "../../../src/types/model.js";
 import type { LLMProvider } from "./types.js";
 import { anthropicProvider } from "./anthropic.js";
-import { openaiProvider } from "./openai.js";
+import { cohereProvider } from "./cohere.js";
+import { deepseekProvider } from "./deepseek.js";
+import { googleGeminiProvider } from "./googleGemini.js";
+import { groqProvider } from "./groq.js";
+import { mistralProvider } from "./mistral.js";
 import { ollamaProvider } from "./ollama.js";
+import { openaiCodexProvider } from "./openai.js";
+import { openaiStandardProvider } from "./openaiStandard.js";
+import { openrouterProvider } from "./openrouter.js";
+import { perplexityProvider } from "./perplexity.js";
+import { togetherProvider } from "./together.js";
+import { xaiProvider } from "./xai.js";
 
 export type ProviderRegistryEntry = ProviderCatalogEntry & {
   runtime: LLMProvider;
 };
 
 const PROVIDER_RUNTIME_MAP = new Map<CanonicalProviderName, LLMProvider>([
-  [openaiProvider.name, openaiProvider],
+  [openaiCodexProvider.name, openaiCodexProvider],
+  [openaiStandardProvider.name, openaiStandardProvider],
   [anthropicProvider.name, anthropicProvider],
+  [googleGeminiProvider.name, googleGeminiProvider],
+  [mistralProvider.name, mistralProvider],
+  [groqProvider.name, groqProvider],
+  [deepseekProvider.name, deepseekProvider],
+  [togetherProvider.name, togetherProvider],
+  [openrouterProvider.name, openrouterProvider],
+  [xaiProvider.name, xaiProvider],
+  [cohereProvider.name, cohereProvider],
+  [perplexityProvider.name, perplexityProvider],
   [ollamaProvider.name, ollamaProvider],
 ]);
 

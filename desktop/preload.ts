@@ -47,13 +47,17 @@ contextBridge.exposeInMainWorld("codexAgent", {
   auth: {
     list: () => ipcRenderer.invoke("auth:list"),
     login: (provider?: string) => ipcRenderer.invoke("auth:login", provider),
+    cancelLogin: () => ipcRenderer.invoke("auth:cancelLogin"),
     save: (args: { provider: string; apiKey?: string; owner?: string; baseUrl?: string }) =>
       ipcRenderer.invoke("auth:save", args),
+    test: (args: { provider: string; apiKey?: string; baseUrl?: string; modelRef?: string; timeoutMs?: number }) =>
+      ipcRenderer.invoke("auth:test", args),
     delete: (provider: string) => ipcRenderer.invoke("auth:delete", provider),
   },
   getRuntimeStatus: () => ipcRenderer.invoke("codex:runtimeStatus"),
   sendOAuthPromptResponse: (value: string) => ipcRenderer.send("oauthPromptResponse", value),
   minimizeWindow: () => ipcRenderer.send("window:minimize"),
+  toggleMaximizeWindow: () => ipcRenderer.send("window:toggleMaximize"),
   closeWindow: () => ipcRenderer.send("window:close"),
 
   // Legacy single-turn chat
@@ -82,6 +86,7 @@ contextBridge.exposeInMainWorld("codexAgent", {
   onProgress: (cb: (msg: string) => void) => onIpc("codexProgress", cb),
   onOAuthPrompt: (cb: (payload: { message: string; placeholder?: string }) => void) =>
     onIpc("oauthPromptRequest", cb),
+  onOAuthPromptDismissed: (cb: () => void) => onIpc("oauthPromptDismissed", cb),
 
   // Store: Conversations
   store: {
@@ -116,6 +121,19 @@ contextBridge.exposeInMainWorld("codexAgent", {
     saveContext: (projectContext: any) => ipcRenderer.invoke("store:contexts:save", projectContext),
     deleteContext: (id: string) => ipcRenderer.invoke("store:contexts:delete", id),
 
+    // Automation packages
+    listAutomationPackages: () => ipcRenderer.invoke("store:automationPackages:list"),
+    getAutomationPackage: (id: string) => ipcRenderer.invoke("store:automationPackages:get", id),
+    saveAutomationPackage: (automationPackage: any) =>
+      ipcRenderer.invoke("store:automationPackages:save", automationPackage),
+    deleteAutomationPackage: (id: string) => ipcRenderer.invoke("store:automationPackages:delete", id),
+
+    // Connections
+    listConnections: () => ipcRenderer.invoke("store:connections:list"),
+    getConnection: (id: string) => ipcRenderer.invoke("store:connections:get", id),
+    saveConnection: (connection: any) => ipcRenderer.invoke("store:connections:save", connection),
+    deleteConnection: (id: string) => ipcRenderer.invoke("store:connections:delete", id),
+
     // MCP Servers
     listMcpServers: () => ipcRenderer.invoke("store:mcp:list"),
     getMcpServer: (id: string) => ipcRenderer.invoke("store:mcp:get", id),
@@ -129,6 +147,13 @@ contextBridge.exposeInMainWorld("codexAgent", {
 
   agents: {
     suggest: (args: { prompt: string; currentAgentId?: string }) => ipcRenderer.invoke("agents:suggest", args),
+  },
+
+  automation: {
+    inspectPackage: (packageId: string) => ipcRenderer.invoke("automation:inspect", packageId),
+    validatePackage: (packageId: string) => ipcRenderer.invoke("automation:validate", packageId),
+    activatePackage: (packageId: string) => ipcRenderer.invoke("automation:activate", packageId),
+    deactivatePackage: (packageId: string) => ipcRenderer.invoke("automation:deactivate", packageId),
   },
 
   proactive: {
@@ -185,6 +210,14 @@ contextBridge.exposeInMainWorld("codexAgent", {
     start: (args: any) => ipcRenderer.invoke("runs:start", args),
     approve: (args: any) => ipcRenderer.invoke("runs:approve", args),
     abort: (runId: string) => ipcRenderer.invoke("runs:abort", runId),
+  },
+
+  subagents: {
+    list: (args?: { status?: string; parentSessionId?: string; requestedBy?: string; limit?: number }) =>
+      ipcRenderer.invoke("subagents:list", args),
+    get: (subagentId: string) => ipcRenderer.invoke("subagents:get", subagentId),
+    spawn: (args: any) => ipcRenderer.invoke("subagents:spawn", args),
+    cancel: (subagentId: string) => ipcRenderer.invoke("subagents:cancel", subagentId),
   },
 
   workspaces: {
@@ -289,6 +322,10 @@ contextBridge.exposeInMainWorld("codexAgent", {
     send: (draftId: string) => ipcRenderer.invoke("drafts:send", draftId),
     delete: (draftId: string) => ipcRenderer.invoke("drafts:delete", draftId),
   },
+  inbox: {
+    list: (args?: { limit?: number; onlyUnread?: boolean; query?: string; channel?: string }) =>
+      ipcRenderer.invoke("inbox:list", args),
+  },
 
   // Analytics
   analytics: {
@@ -324,5 +361,32 @@ contextBridge.exposeInMainWorld("codexAgent", {
   // Connectivity
   connectivity: {
     status: () => ipcRenderer.invoke("connectivity:status"),
+  },
+
+  // Cron / Scheduled Tasks
+  cron: {
+    list: () => ipcRenderer.invoke("cron:list"),
+    get: (id: string) => ipcRenderer.invoke("cron:get", id),
+    create: (data: any) => ipcRenderer.invoke("cron:create", data),
+    update: (id: string, patch: any) => ipcRenderer.invoke("cron:update", id, patch),
+    delete: (id: string) => ipcRenderer.invoke("cron:delete", id),
+    toggle: (id: string, enabled: boolean) => ipcRenderer.invoke("cron:toggle", id, enabled),
+  },
+
+  // Plugins
+  plugins: {
+    list: () => ipcRenderer.invoke("plugins:list"),
+    install: (manifest: any) => ipcRenderer.invoke("plugins:install", manifest),
+    activate: (id: string) => ipcRenderer.invoke("plugins:activate", id),
+    deactivate: (id: string) => ipcRenderer.invoke("plugins:deactivate", id),
+    uninstall: (id: string) => ipcRenderer.invoke("plugins:uninstall", id),
+  },
+
+  // Gateway
+  gateway: {
+    start: (config?: any) => ipcRenderer.invoke("gateway:start", config),
+    stop: () => ipcRenderer.invoke("gateway:stop"),
+    status: () => ipcRenderer.invoke("gateway:status"),
+    config: (config: any) => ipcRenderer.invoke("gateway:config", config),
   },
 });

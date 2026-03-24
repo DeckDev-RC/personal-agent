@@ -1,36 +1,26 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { getModelId } from "../../../../src/types/model.js";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import {
+  getModelId,
+  getProviderApiKeyPlaceholder,
+  getProviderCatalogEntry,
+  getSupportedModelIds,
+  listProviderCatalog,
+} from "../../../../src/types/model.js";
+import { useOAuthUiBridge } from "../../hooks/useOAuthUiBridge";
 import { useAuthStore } from "../../stores/authStore";
 import { useRuntimeStore } from "../../stores/runtimeStore";
 import { useSettingsStore, type ThemeMode, type ProviderName } from "../../stores/settingsStore";
+import OAuthPromptContent from "../auth/OAuthPromptContent";
+import Badge from "../shared/Badge";
 import Button from "../shared/Button";
 import Input, { TextArea } from "../shared/Input";
-import Badge from "../shared/Badge";
 import Modal from "../shared/Modal";
 import Toggle from "../shared/Toggle";
 
-const PROVIDER_MODELS: Record<ProviderName, string[]> = {
-  "openai-codex": [
-    "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.2",
-    "gpt-5.1-codex-max", "gpt-5.1-codex-mini", "gpt-5-codex", "gpt-5-mini", "gpt-5-nano",
-  ],
-  anthropic: [
-    "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-sonnet-4-5-20250514",
-  ],
-  ollama: [
-    "llama3.3", "llama3.2", "llama3.1", "codellama", "deepseek-coder-v2",
-    "qwen2.5-coder", "mistral", "mixtral", "phi-4", "gemma2",
-  ],
-};
-
-const PROVIDER_OPTIONS: { value: ProviderName; label: string }[] = [
-  { value: "openai-codex", label: "OpenAI Codex" },
-  { value: "anthropic", label: "Anthropic Claude" },
-  { value: "ollama", label: "Ollama (Local)" },
-];
-
-const MODEL_OPTIONS = Object.values(PROVIDER_MODELS).flat();
+const PROVIDER_OPTIONS = listProviderCatalog().map((entry) => ({ value: entry.id, label: entry.displayName }));
+const MODEL_OPTIONS = Array.from(new Set(PROVIDER_OPTIONS.flatMap((option) => getSupportedModelIds(option.value))));
 const CONTEXT_WINDOW_OPTIONS = ["128000", "256000", "512000", "1000000"];
 const COMPACT_AT_OPTIONS = ["64000", "96000", "128000", "256000", "512000", "750000"];
 const OUTPUT_TOKEN_OPTIONS = ["2048", "4096", "8192", "16384"];
@@ -45,33 +35,56 @@ const PROACTIVITY_FREQUENCIES = [
   { value: "balanced", labelKey: "settings.proactivity.frequency.balanced" },
   { value: "high", labelKey: "settings.proactivity.frequency.high" },
 ] as const;
-
 const THEME_OPTIONS: { value: ThemeMode; labelKey: string }[] = [
   { value: "dark", labelKey: "settings.themeDark" },
   { value: "light", labelKey: "settings.themeLight" },
   { value: "system", labelKey: "settings.themeSystem" },
 ];
 
+function SettingsSection({
+  title,
+  description,
+  children,
+  collapsible = false,
+  open = true,
+  onToggle,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  collapsible?: boolean;
+  open?: boolean;
+  onToggle?: () => void;
+}) {
+  return (
+    <section className="rounded-2xl border border-border bg-bg-secondary/60 p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-medium text-text-primary">{title}</h2>
+          {description && <p className="mt-1 text-xs leading-relaxed text-text-secondary/70">{description}</p>}
+        </div>
+        {collapsible && onToggle && (
+          <button type="button" onClick={onToggle} className="rounded-lg border border-border px-2 py-1 text-text-secondary hover:bg-white/5 hover:text-text-primary">
+            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+        )}
+      </div>
+      {(!collapsible || open) && <div className="mt-4">{children}</div>}
+    </section>
+  );
+}
+
 export default function SettingsView() {
   const { t } = useTranslation();
-  const {
-    authenticated,
-    email,
-    loginBusy,
-    login,
-    logout,
-    saveProviderAuth,
-    deleteProviderAuth,
-    getProviderStatus,
-    checkAuth,
-  } = useAuthStore();
+  const { email, loginBusy, login, logout, saveProviderAuth, deleteProviderAuth, testProviderConnection, getProviderStatus, checkAuth } = useAuthStore();
   const { refreshStatus } = useRuntimeStore();
   const { settings, updateSettings } = useSettingsStore();
-
+  const { prompt } = useOAuthUiBridge();
   const [saved, setSaved] = useState(false);
   const [provider, setProvider] = useState<ProviderName>(settings.provider);
   const [model, setModel] = useState(getModelId(settings.defaultModelRef));
   const [reasoningEffort, setReasoningEffort] = useState(settings.reasoningEffort);
+  const [approvalMode, setApprovalMode] = useState(settings.approvalMode);
   const [planMode, setPlanMode] = useState(settings.planMode);
   const [fastMode, setFastMode] = useState(settings.fastMode);
   const [globalSystemPrompt, setGlobalSystemPrompt] = useState(settings.globalSystemPrompt);
@@ -90,28 +103,18 @@ export default function SettingsView() {
   const [proactivityRoutines, setProactivityRoutines] = useState(settings.proactivity.suggestionTypes.routines);
   const [proactivityContext, setProactivityContext] = useState(settings.proactivity.suggestionTypes.context);
   const [proactivityCommunication, setProactivityCommunication] = useState(settings.proactivity.suggestionTypes.communication);
-  const [anthropicApiKey, setAnthropicApiKey] = useState("");
-  const [ollamaBaseUrl, setOllamaBaseUrl] = useState("http://localhost:11434");
-
-  const [oauthModalOpen, setOauthModalOpen] = useState(false);
-  const [oauthInput, setOauthInput] = useState("");
-  const [oauthMessage, setOauthMessage] = useState("");
-
-  const api = () => (window as any).codexAgent;
-
-  useEffect(() => {
-    const unsub = api().onOAuthPrompt((payload: { message: string; placeholder?: string }) => {
-      setOauthMessage(payload.message);
-      setOauthModalOpen(true);
-      setOauthInput("");
-    });
-    return unsub;
-  }, []);
+  const [fallbackProviders, setFallbackProviders] = useState(settings.fallbackProviders);
+  const [providerApiKey, setProviderApiKey] = useState("");
+  const [providerBaseUrl, setProviderBaseUrl] = useState(getProviderCatalogEntry(provider).defaultBaseUrl ?? "");
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionFeedback, setConnectionFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
     setProvider(settings.provider);
     setModel(getModelId(settings.defaultModelRef));
     setReasoningEffort(settings.reasoningEffort);
+    setApprovalMode(settings.approvalMode);
     setPlanMode(settings.planMode);
     setFastMode(settings.fastMode);
     setGlobalSystemPrompt(settings.globalSystemPrompt);
@@ -130,39 +133,42 @@ export default function SettingsView() {
     setProactivityRoutines(settings.proactivity.suggestionTypes.routines);
     setProactivityContext(settings.proactivity.suggestionTypes.context);
     setProactivityCommunication(settings.proactivity.suggestionTypes.communication);
+    setFallbackProviders(settings.fallbackProviders);
   }, [settings]);
 
   useEffect(() => {
     const status = getProviderStatus(provider);
-    setOllamaBaseUrl(status?.baseUrl ?? "http://localhost:11434");
-    setAnthropicApiKey("");
+    setProviderBaseUrl(status?.baseUrl ?? getProviderCatalogEntry(provider).defaultBaseUrl ?? "");
+    setProviderApiKey("");
+    setConnectionFeedback(null);
   }, [getProviderStatus, provider]);
 
   const activeAuthStatus = useMemo(() => getProviderStatus(provider), [getProviderStatus, provider]);
-
-  const normalizedContextWindow = useMemo(() => {
-    const value = Number(contextWindow) || settings.contextWindow;
-    return Math.min(1_000_000, Math.max(32_000, value));
-  }, [contextWindow, settings.contextWindow]);
-
-  const normalizedCompactAtTokens = useMemo(() => {
-    const value = Number(compactAtTokens) || settings.compactAtTokens;
-    return Math.min(normalizedContextWindow, Math.max(8_000, value));
-  }, [compactAtTokens, normalizedContextWindow, settings.compactAtTokens]);
-
-  const normalizedMaxOutputTokens = useMemo(() => {
-    const value = Number(maxOutputTokens) || settings.maxOutputTokens;
-    return Math.min(64_000, Math.max(256, value));
-  }, [maxOutputTokens, settings.maxOutputTokens]);
+  const activeProviderCatalog = useMemo(() => getProviderCatalogEntry(provider), [provider]);
+  const providerModels = useMemo(() => getSupportedModelIds(provider), [provider]);
+  const fallbackCandidates = useMemo(() => PROVIDER_OPTIONS.filter((option) => option.value !== provider), [provider]);
+  const apiKeyPlaceholder = useMemo(() => getProviderApiKeyPlaceholder(provider), [provider]);
+  const authStatusMessage = connectionFeedback?.message ?? activeAuthStatus?.validationMessage ?? activeAuthStatus?.message;
+  const authStatusTone = connectionFeedback?.tone ?? (activeAuthStatus?.validationStatus === "error" ? "error" : activeAuthStatus?.validationStatus === "success" ? "success" : null);
+  const canTestConnection = useMemo(() => {
+    if (activeProviderCatalog.authKind === "oauth") return Boolean(activeAuthStatus?.configured);
+    if (activeProviderCatalog.authKind === "apiKey") return Boolean(providerApiKey.trim() || activeAuthStatus?.configured);
+    return Boolean(providerBaseUrl.trim());
+  }, [activeAuthStatus?.configured, activeProviderCatalog.authKind, providerApiKey, providerBaseUrl]);
+  const normalizedContextWindow = useMemo(() => Math.min(1_000_000, Math.max(32_000, Number(contextWindow) || settings.contextWindow)), [contextWindow, settings.contextWindow]);
+  const normalizedCompactAtTokens = useMemo(() => Math.min(normalizedContextWindow, Math.max(8_000, Number(compactAtTokens) || settings.compactAtTokens)), [compactAtTokens, normalizedContextWindow, settings.compactAtTokens]);
+  const normalizedMaxOutputTokens = useMemo(() => Math.min(64_000, Math.max(256, Number(maxOutputTokens) || settings.maxOutputTokens)), [maxOutputTokens, settings.maxOutputTokens]);
 
   async function handleSave() {
     const selectedModelRef = `${provider}/${model.trim()}`;
     await updateSettings({
       provider,
+      fallbackProviders,
       defaultModelRef: selectedModelRef,
       fastModelRef: selectedModelRef,
       reviewModelRef: selectedModelRef,
       reasoningEffort,
+      approvalMode,
       planMode,
       fastMode,
       globalSystemPrompt: globalSystemPrompt.trim(),
@@ -193,71 +199,86 @@ export default function SettingsView() {
     setTimeout(() => setSaved(false), 2000);
   }
 
+  async function persistSelectedProvider() {
+    const selectedModelRef = `${provider}/${model.trim()}`;
+    await updateSettings({
+      provider,
+      defaultModelRef: selectedModelRef,
+      fastModelRef: selectedModelRef,
+      reviewModelRef: selectedModelRef,
+    });
+  }
+
   async function handleSaveProviderAuth() {
-    if (provider === "anthropic") {
-      await saveProviderAuth({
-        provider,
-        apiKey: anthropicApiKey,
-      });
-    } else if (provider === "ollama") {
-      await saveProviderAuth({
-        provider,
-        baseUrl: ollamaBaseUrl,
-      });
-    } else {
+    await persistSelectedProvider();
+    if (provider === "openai-codex") {
       await login(provider);
+    } else if (activeProviderCatalog.authKind === "apiKey") {
+      await saveProviderAuth({ provider, apiKey: providerApiKey, baseUrl: providerBaseUrl.trim() || undefined });
+    } else if (activeProviderCatalog.authKind === "local") {
+      await saveProviderAuth({ provider, baseUrl: providerBaseUrl.trim() || undefined });
     }
+    setProviderApiKey("");
+    const result = await testProviderConnection({ provider, modelRef: `${provider}/${model.trim()}` });
+    setConnectionFeedback({ tone: result.ok ? "success" : "error", message: result.message ?? (result.ok ? "Connection verified." : "Connection test failed.") });
     await refreshStatus();
     await checkAuth(`${provider}/${model}`);
   }
 
-  async function handleLanguageChange(lang: "pt-BR" | "en" | "es" | "de" | "zh-CN" | "zh-TW") {
-    await updateSettings({ language: lang });
+  async function handleTestConnection(useCurrentInput = true) {
+    setTestingConnection(true);
+    setConnectionFeedback(null);
+    try {
+      const currentBaseUrl = providerBaseUrl.trim();
+      const savedBaseUrl = activeAuthStatus?.baseUrl?.trim() || activeProviderCatalog.defaultBaseUrl || "";
+      const result = await testProviderConnection({
+        provider,
+        modelRef: `${provider}/${model.trim()}`,
+        apiKey: useCurrentInput && activeProviderCatalog.authKind === "apiKey" && providerApiKey.trim() ? providerApiKey.trim() : undefined,
+        baseUrl: useCurrentInput && currentBaseUrl && currentBaseUrl !== savedBaseUrl ? currentBaseUrl : undefined,
+      });
+      setConnectionFeedback({ tone: result.ok ? "success" : "error", message: result.message ?? (result.ok ? "Connection verified." : "Connection test failed.") });
+      await refreshStatus();
+    } finally {
+      setTestingConnection(false);
+    }
   }
 
-  async function handleThemeChange(mode: ThemeMode) {
-    await updateSettings({ themeMode: mode });
-  }
-
-  function submitOAuthModal() {
-    api().sendOAuthPromptResponse(oauthInput.trim());
-    setOauthModalOpen(false);
+  function toggleFallbackProvider(nextProvider: ProviderName) {
+    setFallbackProviders((current) => current.includes(nextProvider) ? current.filter((item) => item !== nextProvider) : [...current, nextProvider]);
   }
 
   return (
     <div className="flex-1 overflow-y-auto px-6 py-6">
-      <div className="max-w-3xl mx-auto space-y-8">
+      <div className="mx-auto max-w-3xl space-y-6">
         <h1 className="text-lg font-semibold text-text-primary">{t("settings.title")}</h1>
 
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-text-secondary">{t("settings.auth")}</h2>
-          <div className="rounded-xl border border-border bg-bg-secondary/60 p-4 space-y-3">
-            <div className="flex items-center gap-3">
+        <SettingsSection
+          title={t("settings.sections.connection", "Conexão do provider")}
+          description={t("settings.sections.connectionDescription", "Defina o provider principal, valide a autenticação e ajuste o modelo padrão da conversa.")}
+        >
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-3">
               {activeAuthStatus?.authenticated ? (
                 <>
                   <Badge color="green">{t("settings.loggedIn")}</Badge>
-                  {(activeAuthStatus.owner ?? email) && (
-                    <span className="text-xs text-text-secondary">{activeAuthStatus.owner ?? email}</span>
-                  )}
+                  {(activeAuthStatus.owner ?? email) && <span className="text-xs text-text-secondary">{activeAuthStatus.owner ?? email}</span>}
                 </>
               ) : (
                 <Badge color="orange">{t("settings.notLoggedIn")}</Badge>
               )}
-              <Badge color="gray">{provider}</Badge>
+              <Badge color="gray">{activeProviderCatalog.displayName}</Badge>
+              {activeAuthStatus?.validationStatus === "success" && <Badge color="green">{t("settings.connectionVerified", "Connection OK")}</Badge>}
+              {activeAuthStatus?.validationStatus === "error" && <Badge color="red">{t("settings.connectionFailed", "Test failed")}</Badge>}
             </div>
 
             {provider === "openai-codex" && (
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={async () => {
-                    await login(provider);
-                    await refreshStatus();
-                  }}
-                  disabled={loginBusy}
-                >
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="primary" size="sm" onClick={() => void handleSaveProviderAuth()} disabled={loginBusy}>
                   {t("settings.login")}
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => void handleTestConnection(false)} disabled={!canTestConnection || loginBusy || testingConnection}>
+                  {testingConnection ? t("settings.testingConnection", "Testing...") : t("settings.testConnection", "Test connection")}
                 </Button>
                 {activeAuthStatus?.configured && (
                   <Button
@@ -274,392 +295,292 @@ export default function SettingsView() {
               </div>
             )}
 
-            {provider === "anthropic" && (
-              <div className="space-y-2">
+            {activeProviderCatalog.authKind === "apiKey" && provider !== "openai-codex" && (
+              <div className="space-y-3">
                 <Input
-                  label="Anthropic API Key"
-                  value={anthropicApiKey}
-                  onChange={(e) => setAnthropicApiKey(e.target.value)}
-                  placeholder={activeAuthStatus?.configured ? "Configured. Paste a new key to replace." : "sk-ant-..."}
+                  label={`${activeProviderCatalog.displayName} API Key`}
+                  value={providerApiKey}
+                  onChange={(e) => setProviderApiKey(e.target.value)}
+                  placeholder={activeAuthStatus?.configured ? "Configured. Paste a new key to replace." : (apiKeyPlaceholder ?? "API key")}
                 />
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => void handleSaveProviderAuth()}
-                    disabled={!anthropicApiKey.trim()}
-                  >
-                    Save Key
+                {activeProviderCatalog.defaultBaseUrl && (
+                  <Input label="Base URL" value={providerBaseUrl} onChange={(e) => setProviderBaseUrl(e.target.value)} placeholder={activeProviderCatalog.defaultBaseUrl} />
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="primary" size="sm" onClick={() => void handleSaveProviderAuth()} disabled={!providerApiKey.trim()}>
+                    {t("settings.saveKey", "Save key")}
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => void handleTestConnection(true)} disabled={!canTestConnection || testingConnection}>
+                    {testingConnection ? t("settings.testingConnection", "Testing...") : t("settings.testConnection", "Test connection")}
                   </Button>
                   {activeAuthStatus?.configured && (
                     <Button
                       variant="secondary"
                       size="sm"
                       onClick={async () => {
-                        await deleteProviderAuth("anthropic");
+                        await deleteProviderAuth(provider);
                         await refreshStatus();
                       }}
                     >
-                      Clear
+                      {t("settings.clearProvider", "Clear")}
                     </Button>
                   )}
                 </div>
               </div>
             )}
 
-            {provider === "ollama" && (
-              <div className="space-y-2">
+            {activeProviderCatalog.authKind === "local" && (
+              <div className="space-y-3">
                 <Input
-                  label="Ollama Base URL"
-                  value={ollamaBaseUrl}
-                  onChange={(e) => setOllamaBaseUrl(e.target.value)}
-                  placeholder="http://localhost:11434"
+                  label={`${activeProviderCatalog.displayName} Base URL`}
+                  value={providerBaseUrl}
+                  onChange={(e) => setProviderBaseUrl(e.target.value)}
+                  placeholder={activeProviderCatalog.defaultBaseUrl ?? "http://localhost:11434"}
                 />
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button variant="primary" size="sm" onClick={() => void handleSaveProviderAuth()}>
-                    Save Runtime
+                    {t("settings.saveRuntime", "Save runtime")}
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => void handleTestConnection(true)} disabled={!canTestConnection || testingConnection}>
+                    {testingConnection ? t("settings.testingConnection", "Testing...") : t("settings.testConnection", "Test connection")}
                   </Button>
                   <Button
                     variant="secondary"
                     size="sm"
                     onClick={async () => {
-                      setOllamaBaseUrl("http://localhost:11434");
-                      await saveProviderAuth({
-                        provider: "ollama",
-                        baseUrl: "http://localhost:11434",
-                      });
+                      const nextBaseUrl = activeProviderCatalog.defaultBaseUrl ?? "http://localhost:11434";
+                      setProviderBaseUrl(nextBaseUrl);
+                      await saveProviderAuth({ provider, baseUrl: nextBaseUrl });
                       await refreshStatus();
                     }}
                   >
-                    Reset
+                    {t("settings.resetProvider", "Reset")}
                   </Button>
                 </div>
               </div>
             )}
 
-            {activeAuthStatus?.message && (
-              <div className="text-[11px] text-text-secondary/70">{activeAuthStatus.message}</div>
+            {authStatusMessage && (
+              <div className={`text-[11px] ${authStatusTone === "success" ? "text-accent-green" : authStatusTone === "error" ? "text-red-400" : "text-text-secondary/70"}`}>
+                {authStatusMessage}
+              </div>
             )}
-          </div>
-        </section>
 
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-text-secondary">{t("settings.theme")}</h2>
-          <div className="flex gap-2">
-            {THEME_OPTIONS.map((option) => (
-              <Button
-                key={option.value}
-                variant={settings.themeMode === option.value ? "primary" : "secondary"}
-                size="sm"
-                onClick={() => handleThemeChange(option.value)}
-              >
-                {t(option.labelKey)}
-              </Button>
-            ))}
-          </div>
-        </section>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-text-secondary font-medium">{t("settings.provider")}</label>
+                <select
+                  value={provider}
+                  onChange={(e) => {
+                    const nextProvider = e.target.value as ProviderName;
+                    setProvider(nextProvider);
+                    const models = getSupportedModelIds(nextProvider);
+                    if (models.length > 0 && !models.includes(model)) {
+                      setModel(models[0]);
+                    }
+                  }}
+                  className="rounded-lg border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary"
+                >
+                  {PROVIDER_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
 
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-text-secondary font-medium">{t("settings.provider")}</label>
-            <select
-              value={provider}
-              onChange={(e) => {
-                const p = e.target.value as ProviderName;
-                setProvider(p);
-                // Auto-set first model for new provider
-                const models = PROVIDER_MODELS[p];
-                if (models && models.length > 0 && !models.includes(model)) {
-                  setModel(models[0]);
-                }
-              }}
-              className="rounded-lg border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary"
-            >
-              {PROVIDER_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <Input
-            label={t("settings.defaultModel")}
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            placeholder={PROVIDER_MODELS[provider]?.[0] ?? "gpt-5.4"}
-            list="model-options"
-          />
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-text-secondary font-medium">{t("settings.thinking")}</label>
-            <select
-              value={reasoningEffort}
-              onChange={(e) => setReasoningEffort(e.target.value as typeof reasoningEffort)}
-              className="rounded-lg border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary"
-            >
-              {REASONING_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <Input
-            label={t("settings.contextWindow")}
-            value={contextWindow}
-            onChange={(e) => setContextWindow(e.target.value)}
-            placeholder="128000"
-            list="context-window-options"
-            inputMode="numeric"
-          />
-
-          <Input
-            label={t("settings.compactAt")}
-            value={compactAtTokens}
-            onChange={(e) => setCompactAtTokens(e.target.value)}
-            placeholder="96000"
-            list="compact-at-options"
-            inputMode="numeric"
-          />
-
-          <Input
-            label={t("settings.maxOutputTokens")}
-            value={maxOutputTokens}
-            onChange={(e) => setMaxOutputTokens(e.target.value)}
-            placeholder="4096"
-            list="output-token-options"
-            inputMode="numeric"
-          />
-
-          <div className="flex flex-col gap-2">
-            <label className="text-xs text-text-secondary font-medium">{t("settings.executionModes")}</label>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={planMode ? "primary" : "secondary"}
-                size="sm"
-                onClick={() => setPlanMode((value) => !value)}
-              >
-                {t("settings.planMode")} {planMode ? "ON" : "OFF"}
-              </Button>
-              <Button
-                variant={fastMode ? "primary" : "secondary"}
-                size="sm"
-                onClick={() => setFastMode((value) => !value)}
-              >
-                {t("settings.fastMode")} {fastMode ? "ON" : "OFF"}
-              </Button>
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-3">
-          <div className="text-[11px] text-text-secondary/70">
-            {t("settings.modelHelp")}
-            <br />
-            {t("settings.modelHelpFilter")}
-          </div>
-          <TextArea
-            label={t("settings.globalSystemPrompt")}
-            value={globalSystemPrompt}
-            onChange={(e) => setGlobalSystemPrompt(e.target.value)}
-            placeholder={t("settings.globalPromptPlaceholder")}
-            className="min-h-40 font-mono text-xs"
-          />
-        </section>
-
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input
-            label={t("settings.webSearchEndpoint")}
-            value={webSearchEndpoint}
-            onChange={(e) => setWebSearchEndpoint(e.target.value)}
-            placeholder="https://your-search-provider/search"
-          />
-          <Input
-            label={t("settings.webSearchApiKey")}
-            value={webSearchApiKey}
-            onChange={(e) => setWebSearchApiKey(e.target.value)}
-            placeholder="Optional bearer token"
-          />
-          <Input
-            label={t("settings.webSearchTimeout")}
-            value={webSearchTimeoutMs}
-            onChange={(e) => setWebSearchTimeoutMs(e.target.value)}
-            placeholder="15000"
-            inputMode="numeric"
-          />
-          <Input
-            label={t("settings.webSearchMaxResults")}
-            value={webSearchMaxResults}
-            onChange={(e) => setWebSearchMaxResults(e.target.value)}
-            placeholder="5"
-            inputMode="numeric"
-          />
-        </section>
-
-        <section className="space-y-3">
-          <div>
-            <h2 className="text-sm font-medium text-text-secondary">{t("settings.proactivity.title")}</h2>
-            <p className="mt-1 text-xs text-text-secondary/70">{t("settings.proactivity.description")}</p>
-          </div>
-
-          <div className="rounded-xl border border-border bg-bg-secondary/60 p-4 space-y-4">
-            <div className="flex flex-wrap gap-4">
-              <Toggle
-                checked={proactivityEnabled}
-                onChange={setProactivityEnabled}
-                label={t("settings.proactivity.enabled")}
-              />
-              <Toggle
-                checked={proactivityDashboard}
-                onChange={setProactivityDashboard}
-                label={t("settings.proactivity.dashboard")}
-                disabled={!proactivityEnabled}
-              />
-              <Toggle
-                checked={proactivityChat}
-                onChange={setProactivityChat}
-                label={t("settings.proactivity.chat")}
-                disabled={!proactivityEnabled}
+              <Input
+                label={t("settings.defaultModel")}
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder={providerModels[0] ?? "gpt-5.4"}
+                list="model-options"
               />
             </div>
+          </div>
+        </SettingsSection>
 
-            <div className="space-y-2">
-              <div className="text-xs font-medium text-text-secondary">{t("settings.proactivity.frequency.label")}</div>
-              <div className="flex flex-wrap gap-2">
-                {PROACTIVITY_FREQUENCIES.map((option) => (
-                  <Button
-                    key={option.value}
-                    variant={proactivityFrequency === option.value ? "primary" : "secondary"}
-                    size="sm"
-                    onClick={() => setProactivityFrequency(option.value)}
-                    disabled={!proactivityEnabled}
-                  >
+        <SettingsSection
+          title={t("settings.sections.modelExecution", "Modelo e execução")}
+          description={t("settings.sections.modelExecutionDescription", "Controle esforço de raciocínio, janela de contexto, compactação e modos de execução.")}
+        >
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-text-secondary font-medium">{t("settings.thinking")}</label>
+              <select value={reasoningEffort} onChange={(e) => setReasoningEffort(e.target.value as typeof reasoningEffort)} className="rounded-lg border border-border bg-bg-tertiary px-3 py-2 text-sm text-text-primary">
+                {REASONING_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+            <Input label={t("settings.contextWindow")} value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} placeholder="128000" list="context-window-options" inputMode="numeric" />
+            <Input label={t("settings.compactAt")} value={compactAtTokens} onChange={(e) => setCompactAtTokens(e.target.value)} placeholder="96000" list="compact-at-options" inputMode="numeric" />
+            <Input label={t("settings.maxOutputTokens")} value={maxOutputTokens} onChange={(e) => setMaxOutputTokens(e.target.value)} placeholder="4096" list="output-token-options" inputMode="numeric" />
+            <div className="flex flex-col gap-2 md:col-span-2">
+              <label className="text-xs text-text-secondary font-medium">{t("settings.executionModes")}</label>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant={approvalMode === "free" ? "primary" : "secondary"} size="sm" onClick={() => setApprovalMode((value) => value === "free" ? "manual" : "free")}>
+                  {t("settings.freeMode", "Modo livre")} {approvalMode === "free" ? "ON" : "OFF"}
+                </Button>
+                <Button variant={planMode ? "primary" : "secondary"} size="sm" onClick={() => setPlanMode((value) => !value)}>
+                  {t("settings.planMode")} {planMode ? "ON" : "OFF"}
+                </Button>
+                <Button variant={fastMode ? "primary" : "secondary"} size="sm" onClick={() => setFastMode((value) => !value)}>
+                  {t("settings.fastMode")} {fastMode ? "ON" : "OFF"}
+                </Button>
+              </div>
+              <p className="text-[11px] leading-relaxed text-text-secondary/70">
+                {approvalMode === "free"
+                  ? t("settings.freeModeEnabledHint", "Modo livre ativo: o agente executa ações que normalmente pediriam aprovação manual.")
+                  : t("settings.freeModeDisabledHint", "Modo manual ativo: ações sensíveis continuam pedindo aprovação antes de executar.")}
+              </p>
+            </div>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          title={t("settings.sections.interface", "Interface")}
+          description={t("settings.sections.interfaceDescription", "Tema, idioma e atalhos aplicados diretamente na interface.")}
+        >
+          <div className="space-y-6">
+            <div>
+              <div className="text-xs font-medium text-text-secondary">{t("settings.theme")}</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {THEME_OPTIONS.map((option) => (
+                  <Button key={option.value} variant={settings.themeMode === option.value ? "primary" : "secondary"} size="sm" onClick={() => handleThemeChange(option.value)}>
                     {t(option.labelKey)}
                   </Button>
                 ))}
               </div>
             </div>
 
-            <div className="space-y-2">
-              <div className="text-xs font-medium text-text-secondary">{t("settings.proactivity.types.label")}</div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Toggle
-                  checked={proactivityTasks}
-                  onChange={setProactivityTasks}
-                  label={t("settings.proactivity.types.tasks")}
-                  disabled={!proactivityEnabled}
-                />
-                <Toggle
-                  checked={proactivityRoutines}
-                  onChange={setProactivityRoutines}
-                  label={t("settings.proactivity.types.routines")}
-                  disabled={!proactivityEnabled}
-                />
-                <Toggle
-                  checked={proactivityContext}
-                  onChange={setProactivityContext}
-                  label={t("settings.proactivity.types.context")}
-                  disabled={!proactivityEnabled}
-                />
-                <Toggle
-                  checked={proactivityCommunication}
-                  onChange={setProactivityCommunication}
-                  label={t("settings.proactivity.types.communication")}
-                  disabled={!proactivityEnabled}
-                />
+            <div>
+              <div className="text-xs font-medium text-text-secondary">{t("settings.language")}</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {([
+                  { code: "pt-BR", label: "Português (BR)" },
+                  { code: "en", label: "English" },
+                  { code: "es", label: "Español" },
+                  { code: "de", label: "Deutsch" },
+                  { code: "zh-CN", label: "简体中文" },
+                  { code: "zh-TW", label: "繁體中文" },
+                ] as const).map((lang) => (
+                  <Button key={lang.code} variant={settings.language === lang.code ? "primary" : "secondary"} size="sm" onClick={() => void updateSettings({ language: lang.code })}>
+                    {lang.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-xs font-medium text-text-secondary">{t("settings.shortcuts")}</div>
+              <div className="mt-2 space-y-1 text-xs text-text-secondary/70">
+                <div><kbd className="text-accent-blue">Ctrl+B</kbd> - {t("settings.shortcuts.sidebar")}</div>
+                <div><kbd className="text-accent-blue">Ctrl+K</kbd> - {t("settings.shortcuts.commandPalette")}</div>
+                <div><kbd className="text-accent-blue">Enter</kbd> - {t("settings.shortcuts.sendMessage")}</div>
+                <div><kbd className="text-accent-blue">Shift+Enter</kbd> - {t("settings.shortcuts.newLine")}</div>
               </div>
             </div>
           </div>
-        </section>
+        </SettingsSection>
 
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-text-secondary">{t("settings.language")}</h2>
-          <div className="flex flex-wrap gap-2">
-            {([
-              { code: "pt-BR", label: "Português (BR)" },
-              { code: "en", label: "English" },
-              { code: "es", label: "Español" },
-              { code: "de", label: "Deutsch" },
-              { code: "zh-CN", label: "简体中文" },
-              { code: "zh-TW", label: "繁體中文" },
-            ] as const).map((lang) => (
-              <Button
-                key={lang.code}
-                variant={settings.language === lang.code ? "primary" : "secondary"}
-                size="sm"
-                onClick={() => handleLanguageChange(lang.code)}
-              >
-                {lang.label}
-              </Button>
-            ))}
-          </div>
-        </section>
+        <SettingsSection
+          title={t("settings.sections.behavior", "Comportamento do agente")}
+          description={t("settings.sections.behaviorDescription", "Instruções globais e regras para sugestões proativas no dashboard e no chat.")}
+        >
+          <div className="space-y-6">
+            <div>
+              <div className="text-[11px] text-text-secondary/70">
+                {t("settings.modelHelp")}
+                <br />
+                {t("settings.modelHelpFilter")}
+              </div>
+              <TextArea label={t("settings.globalSystemPrompt")} value={globalSystemPrompt} onChange={(e) => setGlobalSystemPrompt(e.target.value)} placeholder={t("settings.globalPromptPlaceholder")} className="mt-2 min-h-40 font-mono text-xs" />
+            </div>
 
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-text-secondary">{t("settings.shortcuts")}</h2>
-          <div className="text-xs text-text-secondary/70 space-y-1">
-            <div><kbd className="text-accent-blue">Ctrl+B</kbd> - {t("settings.shortcuts.sidebar")}</div>
-            <div><kbd className="text-accent-blue">Ctrl+K</kbd> - {t("settings.shortcuts.commandPalette")}</div>
-            <div><kbd className="text-accent-blue">Enter</kbd> - {t("settings.shortcuts.sendMessage")}</div>
-            <div><kbd className="text-accent-blue">Shift+Enter</kbd> - {t("settings.shortcuts.newLine")}</div>
-          </div>
-        </section>
+            <div>
+              <div className="text-xs font-medium text-text-secondary">{t("settings.proactivity.title")}</div>
+              <p className="mt-1 text-xs text-text-secondary/70">{t("settings.proactivity.description")}</p>
+              <div className="mt-3 space-y-4 rounded-xl border border-border bg-bg-primary/70 p-4">
+                <div className="flex flex-wrap gap-4">
+                  <Toggle checked={proactivityEnabled} onChange={setProactivityEnabled} label={t("settings.proactivity.enabled")} />
+                  <Toggle checked={proactivityDashboard} onChange={setProactivityDashboard} label={t("settings.proactivity.dashboard")} disabled={!proactivityEnabled} />
+                  <Toggle checked={proactivityChat} onChange={setProactivityChat} label={t("settings.proactivity.chat")} disabled={!proactivityEnabled} />
+                </div>
 
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-text-secondary">{t("settings.renderer")}</h2>
-          <div className="text-xs text-text-secondary/70">
-            {t("settings.rendererHelp")}
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-text-secondary">{t("settings.proactivity.frequency.label")}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {PROACTIVITY_FREQUENCIES.map((option) => (
+                      <Button key={option.value} variant={proactivityFrequency === option.value ? "primary" : "secondary"} size="sm" onClick={() => setProactivityFrequency(option.value)} disabled={!proactivityEnabled}>
+                        {t(option.labelKey)}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-text-secondary">{t("settings.proactivity.types.label")}</div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Toggle checked={proactivityTasks} onChange={setProactivityTasks} label={t("settings.proactivity.types.tasks")} disabled={!proactivityEnabled} />
+                    <Toggle checked={proactivityRoutines} onChange={setProactivityRoutines} label={t("settings.proactivity.types.routines")} disabled={!proactivityEnabled} />
+                    <Toggle checked={proactivityContext} onChange={setProactivityContext} label={t("settings.proactivity.types.context")} disabled={!proactivityEnabled} />
+                    <Toggle checked={proactivityCommunication} onChange={setProactivityCommunication} label={t("settings.proactivity.types.communication")} disabled={!proactivityEnabled} />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </section>
+        </SettingsSection>
+
+        <SettingsSection
+          title={t("settings.sections.advanced", "Avançado")}
+          description={t("settings.sections.advancedDescription", "Fallbacks, busca web e outras opções menos frequentes ficam aqui para não competir com o básico.")}
+          collapsible
+          open={advancedOpen}
+          onToggle={() => setAdvancedOpen((value) => !value)}
+        >
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-sm font-medium text-text-primary">{t("settings.fallbackTitle", "Providers de fallback")}</h3>
+              <p className="mt-1 text-xs text-text-secondary/70">{t("settings.fallbackDescription", "Usados em ordem quando o provider ativo falha antes de começar a transmitir saída.")}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {fallbackCandidates.map((option) => {
+                  const selectedIndex = fallbackProviders.indexOf(option.value);
+                  return (
+                    <Button key={option.value} variant={selectedIndex >= 0 ? "primary" : "secondary"} size="sm" onClick={() => toggleFallbackProvider(option.value)}>
+                      {selectedIndex >= 0 ? `${selectedIndex + 1}. ` : ""}{option.label}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Input label={t("settings.webSearchEndpoint")} value={webSearchEndpoint} onChange={(e) => setWebSearchEndpoint(e.target.value)} placeholder="https://your-search-provider/search" />
+              <Input label={t("settings.webSearchApiKey")} value={webSearchApiKey} onChange={(e) => setWebSearchApiKey(e.target.value)} placeholder="Optional bearer token" />
+              <Input label={t("settings.webSearchTimeout")} value={webSearchTimeoutMs} onChange={(e) => setWebSearchTimeoutMs(e.target.value)} placeholder="15000" inputMode="numeric" />
+              <Input label={t("settings.webSearchMaxResults")} value={webSearchMaxResults} onChange={(e) => setWebSearchMaxResults(e.target.value)} placeholder="5" inputMode="numeric" />
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-text-primary">{t("settings.rendererTitle", "Renderer")}</h3>
+              <div className="mt-1 text-xs leading-relaxed text-text-secondary/70">{t("settings.rendererHelp")}</div>
+            </div>
+          </div>
+        </SettingsSection>
 
         <div className="flex items-center gap-3">
           <Button variant="primary" size="sm" onClick={handleSave}>
             {saved ? t("settings.saved") : t("settings.save")}
           </Button>
-          <span className="text-[11px] text-text-secondary">
-            {t("settings.contextHelp")}
-          </span>
+          <span className="text-[11px] text-text-secondary">{t("settings.contextHelp")}</span>
         </div>
       </div>
-
-      <datalist id="model-options">
-        {(PROVIDER_MODELS[provider] ?? MODEL_OPTIONS).map((option) => (
-          <option key={option} value={option} />
-        ))}
-      </datalist>
-      <datalist id="context-window-options">
-        {CONTEXT_WINDOW_OPTIONS.map((option) => (
-          <option key={option} value={option} />
-        ))}
-      </datalist>
-      <datalist id="compact-at-options">
-        {COMPACT_AT_OPTIONS.map((option) => (
-          <option key={option} value={option} />
-        ))}
-      </datalist>
-      <datalist id="output-token-options">
-        {OUTPUT_TOKEN_OPTIONS.map((option) => (
-          <option key={option} value={option} />
-        ))}
-      </datalist>
-
-      <Modal open={oauthModalOpen} onClose={() => setOauthModalOpen(false)} title="OAuth">
-        <div className="space-y-3">
-          <p className="text-xs text-text-secondary">{oauthMessage}</p>
-          <Input
-            value={oauthInput}
-            onChange={(e) => setOauthInput(e.target.value)}
-            placeholder={t("settings.oauthPlaceholder")}
-          />
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setOauthModalOpen(false)}>
-              {t("common.cancel")}
-            </Button>
-            <Button variant="primary" size="sm" onClick={submitOAuthModal}>
-              OK
-            </Button>
-          </div>
-        </div>
+      <datalist id="model-options">{(providerModels.length > 0 ? providerModels : MODEL_OPTIONS).map((option) => <option key={option} value={option} />)}</datalist>
+      <datalist id="context-window-options">{CONTEXT_WINDOW_OPTIONS.map((option) => <option key={option} value={option} />)}</datalist>
+      <datalist id="compact-at-options">{COMPACT_AT_OPTIONS.map((option) => <option key={option} value={option} />)}</datalist>
+      <datalist id="output-token-options">{OUTPUT_TOKEN_OPTIONS.map((option) => <option key={option} value={option} />)}</datalist>
+      <Modal open={prompt.open} onClose={prompt.clear} title="OAuth">
+        <OAuthPromptContent message={prompt.message} placeholder={prompt.placeholder} value={prompt.value} onChange={prompt.setValue} onSubmit={prompt.submit} busy={loginBusy} />
       </Modal>
     </div>
   );

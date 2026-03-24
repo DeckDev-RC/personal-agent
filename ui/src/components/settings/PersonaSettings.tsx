@@ -58,7 +58,7 @@ export default function PersonaSettings() {
   return (
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center gap-2">
-        <User size={16} className="text-accent" />
+        <User size={16} className="text-accent-blue" />
         <h2 className="text-sm font-semibold text-text-primary">
           {t("persona.title", "Personalização do Agente")}
         </h2>
@@ -83,7 +83,7 @@ export default function PersonaSettings() {
             value={config.customInstructions ?? ""}
             onChange={(e) => setConfig({ ...config, customInstructions: e.target.value })}
             placeholder={t("persona.customPlaceholder", "Ex: Sempre responda em português. Prefira exemplos práticos.")}
-            className="w-full min-h-[80px] rounded-lg border border-border bg-bg-secondary p-2 text-sm text-text-primary placeholder:text-text-secondary/50 resize-none focus:outline-none focus:ring-1 focus:ring-accent"
+            className="w-full min-h-[80px] rounded-lg border border-border bg-bg-secondary p-2 text-sm text-text-primary placeholder:text-text-secondary/50 resize-none focus:outline-none focus:ring-1 focus:ring-accent-blue"
           />
         </div>
       </div>

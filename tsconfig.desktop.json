@@ -12,6 +12,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*", "desktop/**/*"]
+  "include": ["src/**/*", "desktop/**/*"],
+  "exclude": ["desktop/__tests__/**/*"]
 }
 

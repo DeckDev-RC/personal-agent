@@ -4,6 +4,14 @@ export type WebRecipeStepAction = BrowserToolArgs["action"];
 
 export type WebRecipeStepArgValue = string | number | boolean;
 
+export type WebRecipeFieldDefinition = {
+  key: string;
+  label: string;
+  type: "string" | "number" | "boolean" | "json";
+  description?: string;
+  required?: boolean;
+};
+
 export type WebRecipeStep = {
   id: string;
   label: string;
@@ -17,6 +25,11 @@ export type WebRecipe = {
   description: string;
   steps: WebRecipeStep[];
   tags: string[];
+  connectionId?: string;
+  targetSite?: string;
+  inputSchema?: WebRecipeFieldDefinition[];
+  expectedOutputs?: WebRecipeFieldDefinition[];
+  requiresApprovalProfile?: string;
   createdAt: number;
   updatedAt: number;
   lastRunAt?: number;

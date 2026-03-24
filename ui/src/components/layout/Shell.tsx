@@ -1,19 +1,21 @@
 import React, { Suspense, lazy, useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Minus, X } from "lucide-react";
 import Sidebar, { type NavView } from "./Sidebar";
 import CommandPalette from "./CommandPalette";
 import DayView from "../dashboard/DayView";
 import StatusBar from "./StatusBar";
 import Spinner from "../shared/Spinner";
+import WindowTitleBar from "./WindowTitleBar";
 import { useSettingsStore } from "../../stores/settingsStore";
 import { useChatStore } from "../../stores/chatStore";
 import { useAuthStore } from "../../stores/authStore";
 import { useContextStore } from "../../stores/contextStore";
+import { useRuntimeStore } from "../../stores/runtimeStore";
 import { useHashRouter } from "../../router";
 
 const ChatView = lazy(() => import("../chat/ChatView"));
 const NotificationCenter = lazy(() => import("../notifications/NotificationCenter"));
+const UnifiedInbox = lazy(() => import("../communication/UnifiedInbox"));
 const AgentListView = lazy(() => import("../agents/AgentListView"));
 const ContextListView = lazy(() => import("../context/ContextListView"));
 const TasksView = lazy(() => import("../tasks/TasksView"));
@@ -28,6 +30,8 @@ const SettingsView = lazy(() => import("../settings/SettingsView"));
 const UsageView = lazy(() => import("../analytics/UsageView"));
 const LogsView = lazy(() => import("../analytics/LogsView"));
 const DraftsList = lazy(() => import("../communication/DraftsList"));
+const AutomationView = lazy(() => import("../automation/AutomationView"));
+const PluginManager = lazy(() => import("../plugins/PluginManager"));
 
 function ViewFallback() {
   return (
@@ -49,6 +53,7 @@ export default function Shell() {
   const { loadSettings, settings } = useSettingsStore();
   const { loadConversations } = useChatStore();
   const { checkAuth } = useAuthStore();
+  const refreshStatus = useRuntimeStore((state) => state.refreshStatus);
 
   // Load initial data
   useEffect(() => {
@@ -62,6 +67,10 @@ export default function Shell() {
   useEffect(() => {
     void checkAuth(settings.defaultModelRef);
   }, [checkAuth, settings.defaultModelRef]);
+
+  useEffect(() => {
+    void refreshStatus();
+  }, [refreshStatus, settings.contextWindow, settings.defaultModelRef, settings.maxOutputTokens]);
 
   // Sync language
   useEffect(() => {
@@ -107,6 +116,8 @@ export default function Shell() {
         return <ChatView sessionId={routeParam} />;
       case "notifications":
         return <NotificationCenter />;
+      case "inbox":
+        return <UnifiedInbox />;
       case "settings":
         return <SettingsView />;
       case "workspace":
@@ -135,56 +146,32 @@ export default function Shell() {
         return <LogsView />;
       case "communication":
         return <DraftsList />;
+      case "automation":
+        return <AutomationView />;
+      case "plugins":
+        return <PluginManager />;
     }
   }
 
-  function handleMinimize() {
-    (window as any).codexAgent?.minimizeWindow?.();
-  }
-
-  function handleClose() {
-    (window as any).codexAgent?.closeWindow?.();
-  }
-
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-bg-primary text-text-primary select-none">
-      <div className="absolute top-0 left-0 right-0 h-8 app-drag-region z-20 flex items-center justify-between border-b border-border bg-bg-primary/95 px-3 backdrop-blur">
-        <div className="text-[11px] tracking-[0.08em] text-text-secondary uppercase">
-          {t("app.name")}
-        </div>
-        <div className="app-no-drag flex items-center gap-1">
-          <button
-            onClick={handleMinimize}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-text-secondary hover:bg-white/5 hover:text-text-primary transition-colors cursor-pointer"
-            title={t("common.minimize")}
-            aria-label={t("common.minimize")}
-          >
-            <Minus size={14} />
-          </button>
-          <button
-            onClick={handleClose}
-            className="flex h-6 w-6 items-center justify-center rounded-md text-text-secondary hover:bg-red-500/15 hover:text-red-400 transition-colors cursor-pointer"
-            title={t("common.closeWindow")}
-            aria-label={t("common.closeWindow")}
-          >
-            <X size={14} />
-          </button>
-        </div>
+    <div className="flex h-screen w-screen flex-col overflow-hidden bg-bg-primary text-text-primary select-none">
+      <WindowTitleBar />
+
+      <div className="flex min-h-0 flex-1">
+        <Sidebar
+          open={sidebarOpen}
+          onToggle={() => setSidebarOpen((v) => !v)}
+          activeView={activeView}
+          onNavigate={setActiveView}
+        />
+
+        <main className="flex min-w-0 flex-1 flex-col">
+          <StatusBar />
+          <Suspense fallback={<ViewFallback />}>
+            {renderView()}
+          </Suspense>
+        </main>
       </div>
-
-      <Sidebar
-        open={sidebarOpen}
-        onToggle={() => setSidebarOpen((v) => !v)}
-        activeView={activeView}
-        onNavigate={setActiveView}
-      />
-
-      <main className="flex-1 flex flex-col min-w-0 pt-8">
-        <StatusBar />
-        <Suspense fallback={<ViewFallback />}>
-          {renderView()}
-        </Suspense>
-      </main>
 
       <CommandPalette
         open={paletteOpen}

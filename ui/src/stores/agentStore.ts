@@ -51,7 +51,7 @@ Diretrizes:
 - Sugira melhorias e alternativas quando relevante
 - Se não souber algo, diga honestamente
 - Use formatação markdown para melhor legibilidade`,
-  model: "openai-codex/gpt-5.4",
+  model: "",
   skillIds: [],
   mcpServerIds: [],
   memoryPolicy: {
@@ -107,7 +107,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       name: partial.name ?? "Novo Agente",
       description: partial.description ?? "",
       systemPrompt: partial.systemPrompt ?? DEFAULT_AGENT.systemPrompt,
-      model: partial.model ?? "openai-codex/gpt-5.4",
+      model: partial.model?.trim() ?? "",
       skillIds: partial.skillIds ?? [],
       mcpServerIds: partial.mcpServerIds ?? [],
       projectContextId: partial.projectContextId,

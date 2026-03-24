@@ -29,6 +29,7 @@
     "react-i18next": "^16.5.8",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "turndown": "^7.2.2",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
@@ -38,6 +39,7 @@
     "@types/electron": "^1.4.38",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^6.0.1",
     "autoprefixer": "^10.4.27",
     "electron": "^41.0.3",

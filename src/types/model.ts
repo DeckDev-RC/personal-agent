@@ -1,5 +1,18 @@
-export type CanonicalProviderName = "openai-codex" | "anthropic" | "ollama";
-export type ProviderName = CanonicalProviderName | "openai";
+export type CanonicalProviderName =
+  | "openai-codex"
+  | "openai"
+  | "anthropic"
+  | "ollama"
+  | "google-gemini"
+  | "mistral"
+  | "groq"
+  | "deepseek"
+  | "together"
+  | "openrouter"
+  | "xai"
+  | "cohere"
+  | "perplexity";
+export type ProviderName = CanonicalProviderName;
 export type ModelRef = `${CanonicalProviderName}/${string}`;
 
 export type ProviderAuthKind = "oauth" | "apiKey" | "local";
@@ -7,6 +20,7 @@ export type ProviderCapabilityFlag =
   | "streaming"
   | "tool_use"
   | "reasoning"
+  | "vision"
   | "oauth"
   | "api_key"
   | "local_runtime";
@@ -19,6 +33,8 @@ export type ProviderCatalogEntry = {
   defaultModelId: string;
   supportedModelIds: string[];
   capabilityFlags: ProviderCapabilityFlag[];
+  defaultBaseUrl?: string;
+  apiKeyPlaceholder?: string;
 };
 
 export type ProviderAuthStatus = {
@@ -31,12 +47,14 @@ export type ProviderAuthStatus = {
   baseUrl?: string;
   message?: string;
   lastValidatedAt?: number;
+  validationStatus?: "untested" | "success" | "error";
+  validationMessage?: string;
 };
 
 const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
   {
     id: "openai-codex",
-    aliases: ["openai-codex", "openai"],
+    aliases: ["openai-codex"],
     displayName: "OpenAI Codex",
     authKind: "oauth",
     defaultModelId: "gpt-5.4",
@@ -55,6 +73,24 @@ const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
     capabilityFlags: ["streaming", "tool_use", "reasoning", "oauth"],
   },
   {
+    id: "openai",
+    aliases: ["openai"],
+    displayName: "OpenAI API",
+    authKind: "apiKey",
+    defaultModelId: "gpt-4.1",
+    supportedModelIds: [
+      "gpt-4.1",
+      "gpt-4.1-mini",
+      "gpt-4o",
+      "gpt-4o-mini",
+      "o3",
+      "o4-mini",
+    ],
+    capabilityFlags: ["streaming", "tool_use", "reasoning", "vision", "api_key"],
+    defaultBaseUrl: "https://api.openai.com/v1",
+    apiKeyPlaceholder: "sk-proj-...",
+  },
+  {
     id: "anthropic",
     aliases: ["anthropic"],
     displayName: "Anthropic Claude",
@@ -66,7 +102,9 @@ const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
       "claude-haiku-4-5-20251001",
       "claude-sonnet-4-5-20250514",
     ],
-    capabilityFlags: ["streaming", "tool_use", "reasoning", "api_key"],
+    capabilityFlags: ["streaming", "tool_use", "reasoning", "vision", "api_key"],
+    defaultBaseUrl: "https://api.anthropic.com",
+    apiKeyPlaceholder: "sk-ant-...",
   },
   {
     id: "ollama",
@@ -87,6 +125,139 @@ const PROVIDER_CATALOG: ProviderCatalogEntry[] = [
       "gemma2",
     ],
     capabilityFlags: ["streaming", "tool_use", "reasoning", "local_runtime"],
+    defaultBaseUrl: "http://localhost:11434",
+  },
+  {
+    id: "google-gemini",
+    aliases: ["google-gemini"],
+    displayName: "Google Gemini",
+    authKind: "apiKey",
+    defaultModelId: "gemini-2.5-flash",
+    supportedModelIds: [
+      "gemini-2.5-pro",
+      "gemini-2.5-flash",
+      "gemini-2.0-flash",
+    ],
+    capabilityFlags: ["streaming", "tool_use", "reasoning", "vision", "api_key"],
+    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    apiKeyPlaceholder: "AIza...",
+  },
+  {
+    id: "mistral",
+    aliases: ["mistral"],
+    displayName: "Mistral AI",
+    authKind: "apiKey",
+    defaultModelId: "mistral-large-latest",
+    supportedModelIds: [
+      "mistral-large-latest",
+      "codestral-latest",
+      "ministral-8b-latest",
+    ],
+    capabilityFlags: ["streaming", "tool_use", "reasoning", "api_key"],
+    defaultBaseUrl: "https://api.mistral.ai/v1",
+    apiKeyPlaceholder: "mistral-...",
+  },
+  {
+    id: "groq",
+    aliases: ["groq"],
+    displayName: "Groq",
+    authKind: "apiKey",
+    defaultModelId: "llama-3.3-70b-versatile",
+    supportedModelIds: [
+      "llama-3.3-70b-versatile",
+      "mixtral-8x7b-32768",
+      "qwen/qwen3-32b",
+    ],
+    capabilityFlags: ["streaming", "tool_use", "reasoning", "api_key"],
+    defaultBaseUrl: "https://api.groq.com/openai/v1",
+    apiKeyPlaceholder: "gsk_...",
+  },
+  {
+    id: "deepseek",
+    aliases: ["deepseek"],
+    displayName: "DeepSeek",
+    authKind: "apiKey",
+    defaultModelId: "deepseek-chat",
+    supportedModelIds: [
+      "deepseek-chat",
+      "deepseek-reasoner",
+    ],
+    capabilityFlags: ["streaming", "tool_use", "reasoning", "api_key"],
+    defaultBaseUrl: "https://api.deepseek.com",
+    apiKeyPlaceholder: "sk-...",
+  },
+  {
+    id: "together",
+    aliases: ["together"],
+    displayName: "Together AI",
+    authKind: "apiKey",
+    defaultModelId: "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+    supportedModelIds: [
+      "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo",
+      "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+      "deepseek-ai/DeepSeek-V3",
+    ],
+    capabilityFlags: ["streaming", "tool_use", "reasoning", "api_key"],
+    defaultBaseUrl: "https://api.together.xyz/v1",
+    apiKeyPlaceholder: "tsk_...",
+  },
+  {
+    id: "openrouter",
+    aliases: ["openrouter"],
+    displayName: "OpenRouter",
+    authKind: "apiKey",
+    defaultModelId: "openai/gpt-4.1-mini",
+    supportedModelIds: [
+      "openai/gpt-4.1-mini",
+      "anthropic/claude-sonnet-4.5",
+      "google/gemini-2.5-flash",
+    ],
+    capabilityFlags: ["streaming", "tool_use", "reasoning", "api_key"],
+    defaultBaseUrl: "https://openrouter.ai/api/v1",
+    apiKeyPlaceholder: "sk-or-...",
+  },
+  {
+    id: "xai",
+    aliases: ["xai"],
+    displayName: "xAI",
+    authKind: "apiKey",
+    defaultModelId: "grok-3-mini",
+    supportedModelIds: [
+      "grok-3-mini",
+      "grok-3",
+    ],
+    capabilityFlags: ["streaming", "tool_use", "reasoning", "api_key"],
+    defaultBaseUrl: "https://api.x.ai/v1",
+    apiKeyPlaceholder: "xai-...",
+  },
+  {
+    id: "cohere",
+    aliases: ["cohere"],
+    displayName: "Cohere",
+    authKind: "apiKey",
+    defaultModelId: "command-r-plus",
+    supportedModelIds: [
+      "command-r-plus",
+      "command-r7b-12-2024",
+    ],
+    capabilityFlags: ["streaming", "tool_use", "reasoning", "api_key"],
+    defaultBaseUrl: "https://api.cohere.com/compatibility/v1",
+    apiKeyPlaceholder: "co-...",
+  },
+  {
+    id: "perplexity",
+    aliases: ["perplexity"],
+    displayName: "Perplexity",
+    authKind: "apiKey",
+    defaultModelId: "sonar",
+    supportedModelIds: [
+      "sonar",
+      "sonar-pro",
+      "sonar-reasoning",
+    ],
+    capabilityFlags: ["streaming", "tool_use", "reasoning", "api_key"],
+    defaultBaseUrl: "https://api.perplexity.ai",
+    apiKeyPlaceholder: "pplx-...",
   },
 ];
 
@@ -121,6 +292,21 @@ export function getSupportedModelIds(provider?: string | null): string[] {
   return [...getProviderCatalogEntry(provider).supportedModelIds];
 }
 
+export function getProviderBaseUrl(provider?: string | null): string | undefined {
+  return getProviderCatalogEntry(provider).defaultBaseUrl;
+}
+
+export function getProviderApiKeyPlaceholder(provider?: string | null): string | undefined {
+  return getProviderCatalogEntry(provider).apiKeyPlaceholder;
+}
+
+export function providerSupportsCapability(
+  provider: string | null | undefined,
+  capability: ProviderCapabilityFlag,
+): boolean {
+  return getProviderCatalogEntry(provider).capabilityFlags.includes(capability);
+}
+
 export function buildModelRef(provider: CanonicalProviderName, model: string): ModelRef {
   const normalizedModel = model.trim().replace(/^\/+|\/+$/g, "");
   return `${provider}/${normalizedModel}` as ModelRef;
@@ -146,8 +332,45 @@ export function inferProviderFromModel(model?: string | null): CanonicalProvider
   if (!normalized) {
     return "openai-codex";
   }
+  if (
+    normalized.startsWith("gpt-4.1") ||
+    normalized.startsWith("gpt-4o") ||
+    normalized === "o3" ||
+    normalized.startsWith("o3-") ||
+    normalized === "o4-mini" ||
+    normalized.startsWith("o4-")
+  ) {
+    return "openai";
+  }
   if (normalized.startsWith("claude")) {
     return "anthropic";
+  }
+  if (normalized.startsWith("gemini")) {
+    return "google-gemini";
+  }
+  if (
+    normalized.startsWith("mistral-large") ||
+    normalized.startsWith("codestral") ||
+    normalized.startsWith("ministral")
+  ) {
+    return "mistral";
+  }
+  if (
+    normalized === "deepseek-chat" ||
+    normalized === "deepseek-reasoner" ||
+    normalized === "deepseek-v3" ||
+    normalized === "deepseek-r1"
+  ) {
+    return "deepseek";
+  }
+  if (normalized.startsWith("sonar")) {
+    return "perplexity";
+  }
+  if (normalized.startsWith("grok")) {
+    return "xai";
+  }
+  if (normalized.startsWith("command-r")) {
+    return "cohere";
   }
   if (
     normalized.startsWith("llama") ||

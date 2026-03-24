@@ -77,7 +77,7 @@ export default function WeeklyReport() {
     <div className="flex flex-col gap-4 p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-          <BarChart3 size={16} className="text-accent" />
+          <BarChart3 size={16} className="text-accent-blue" />
           {t("analytics.weeklyReport", "Relatório Semanal")}
         </h2>
         <div className="flex items-center gap-2">
@@ -110,8 +110,8 @@ export default function WeeklyReport() {
               <div key={name} className="flex items-center justify-between">
                 <span className="text-xs text-text-secondary">{name}</span>
                 <div className="flex items-center gap-2">
-                  <div className="h-1.5 bg-accent/30 rounded-full" style={{ width: `${Math.min(100, (count / Math.max(...skillEntries.map(([, c]) => c))) * 80)}px` }}>
-                    <div className="h-full bg-accent rounded-full" style={{ width: "100%" }} />
+                  <div className="h-1.5 bg-accent-blue/30 rounded-full" style={{ width: `${Math.min(100, (count / Math.max(...skillEntries.map(([, c]) => c))) * 80)}px` }}>
+                    <div className="h-full bg-accent-blue rounded-full" style={{ width: "100%" }} />
                   </div>
                   <span className="text-xs text-text-primary font-medium w-6 text-right">{count}</span>
                 </div>

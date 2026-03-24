@@ -1,5 +1,5 @@
 {
-  "app": { "name": "Codex Agent" },
+  "app": { "name": "K" },
   "nav": { "chat": "Chat", "agents": "Agentes", "skills": "Skills", "workflows": "Workflows", "mcp": "MCPs", "analytics": "Analíticas", "logs": "Registros", "settings": "Ajustes" },
   "chat": {
     "placeholder": "Escribe un mensaje...", "send": "Enviar", "newConversation": "Nueva conversación",
@@ -57,7 +57,7 @@
     "shortcuts.sidebar": "Barra lateral", "shortcuts.commandPalette": "Paleta de comandos",
     "shortcuts.sendMessage": "Enviar mensaje", "shortcuts.newLine": "Nueva línea"
   },
-  "common": { "save": "Guardar", "cancel": "Cancelar", "delete": "Eliminar", "create": "Crear", "edit": "Editar", "close": "Cerrar", "confirm": "Confirmar", "search": "Buscar...", "loading": "Cargando...", "error": "Error", "success": "Éxito", "noResults": "Sin resultados", "comingSoon": "próximamente", "minimize": "Minimizar", "closeWindow": "Cerrar" },
+  "common": { "save": "Guardar", "cancel": "Cancelar", "delete": "Eliminar", "create": "Crear", "edit": "Editar", "close": "Cerrar", "confirm": "Confirmar", "search": "Buscar...", "loading": "Cargando...", "error": "Error", "success": "Éxito", "noResults": "Sin resultados", "comingSoon": "próximamente", "minimize": "Minimizar", "maximizeWindow": "Maximizar o restaurar", "closeWindow": "Cerrar" },
   "slashCommand": { "new": "Nueva conversación", "newDesc": "Iniciar nueva conversación", "clear": "Limpiar", "clearDesc": "Limpiar conversación actual", "export": "Exportar", "exportDesc": "Exportar conversación como markdown", "search": "Buscar", "searchDesc": "Buscar en la conversación", "model": "Modelo", "modelDesc": "Cambiar el modelo actual" },
   "commandPalette": { "placeholder": "Escribe un comando...", "newChat": "Nueva conversación", "createAgent": "Crear agente", "createSkill": "Crear skill", "createWorkflow": "Crear workflow", "addMcp": "Agregar servidor MCP", "openSettings": "Abrir configuración", "switchLanguage": "Cambiar idioma" }
 }

@@ -70,7 +70,7 @@ export default function FeatureTour({ onComplete }: { onComplete: () => void }) 
       <div className="pointer-events-auto w-full max-w-sm bg-bg-primary border border-border rounded-xl shadow-2xl p-4 animate-in slide-in-from-bottom">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent/15 text-accent">
+            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent-blue/15 text-accent-blue">
               <Icon size={16} />
             </div>
             <div>
@@ -90,7 +90,7 @@ export default function FeatureTour({ onComplete }: { onComplete: () => void }) 
         <div className="flex justify-between items-center">
           <div className="flex gap-1">
             {TOUR_STEPS.map((_, i) => (
-              <div key={i} className={`w-1.5 h-1.5 rounded-full ${i <= currentStep ? "bg-accent" : "bg-border"}`} />
+              <div key={i} className={`w-1.5 h-1.5 rounded-full ${i <= currentStep ? "bg-accent-blue" : "bg-border"}`} />
             ))}
           </div>
           <Button variant="primary" size="sm" onClick={handleNext}>

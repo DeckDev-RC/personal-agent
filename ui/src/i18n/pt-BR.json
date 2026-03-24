@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "Codex Agent"
+    "name": "K"
   },
   "nav": {
     "today": "Hoje",
@@ -129,6 +129,11 @@
   "statusBar": {
     "oauthConnected": "OAuth conectado",
     "oauthDisconnected": "OAuth desconectado",
+    "apiKeyConfigured": "API key configurada",
+    "apiKeyMissing": "API key pendente",
+    "localReady": "Runtime local pronto",
+    "localUnavailable": "Runtime local indisponível",
+    "connectionUnknown": "Conexão indisponível",
     "remaining": "restante",
     "compactAt": "compactar @",
     "output": "Saída",
@@ -255,7 +260,7 @@
   },
   "workspace": {
     "title": "Workspace de Cowork",
-    "subtitle": "Arquivos gerados automaticamente pelas Quick Actions e organizados nas pastas padrao do OpenClaw.",
+    "subtitle": "Arquivos gerados automaticamente pelas Quick Actions e organizados nas pastas padrão do cowork local.",
     "refresh": "Atualizar",
     "rootLabel": "Raiz",
     "totalFiles": "Arquivos",
@@ -298,6 +303,16 @@
     "retry": "Tentar novamente",
     "quickActionsTitle": "Acoes rapidas",
     "quickActionsDescription": "Skills prontas para resumir reunioes, escrever emails, pesquisar e organizar o trabalho.",
+    "firstRun": {
+      "title": "Próximos passos",
+      "description": "Faça o primeiro movimento sem precisar interpretar cards vazios ou estados técnicos.",
+      "openChat": "Nova conversa",
+      "openChatDescription": "Abra o chat e envie a primeira mensagem para validar o provider escolhido.",
+      "connectTools": "Conectar ferramentas",
+      "connectToolsDescription": "Adicione Slack, Gmail, Calendar ou outras integrações quando fizer sentido para a rotina.",
+      "openSettings": "Configurar provider",
+      "openSettingsDescription": "Revise autenticação, modelo e comportamento do agente sem sair do app."
+    },
     "stats": {
       "openTasks": "Tarefas abertas",
       "recentOutputs": "Outputs recentes",
@@ -493,8 +508,16 @@
     "success": "Sucesso",
     "noResults": "Sem resultados",
     "comingSoon": "em breve",
+    "back": "Voltar",
+    "next": "Próximo",
     "minimize": "Minimizar",
+    "maximizeWindow": "Maximizar ou restaurar",
     "closeWindow": "Fechar"
+  },
+  "onboarding": {
+    "welcome": "Bem-vindo ao K",
+    "start": "Começar",
+    "finish": "Começar a usar"
   },
   "slashCommand": {
     "new": "Nova conversa",

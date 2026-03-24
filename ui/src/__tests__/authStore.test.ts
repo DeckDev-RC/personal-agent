@@ -29,6 +29,7 @@ describe("authStore", () => {
     });
     mockAuth.login = vi.fn().mockResolvedValue({ ok: true });
     mockAuth.save = vi.fn().mockResolvedValue({ ok: true });
+    mockAuth.test = vi.fn().mockResolvedValue({ ok: true, message: "Anthropic Claude connection verified." });
     mockAuth.delete = vi.fn().mockResolvedValue({ ok: true });
   });
 
@@ -41,5 +42,19 @@ describe("authStore", () => {
   it("exposes provider status helpers", async () => {
     await useAuthStore.getState().checkAuth("openai-codex/gpt-5.4");
     expect(useAuthStore.getState().getProviderStatus("openai-codex")?.owner).toBe("user@example.com");
+  });
+
+  it("tests a provider connection and refreshes saved statuses when using stored credentials", async () => {
+    const result = await useAuthStore.getState().testProviderConnection({
+      provider: "anthropic",
+      modelRef: "anthropic/claude-sonnet-4-6",
+    });
+
+    expect(mockAuth.test).toHaveBeenCalledWith({
+      provider: "anthropic",
+      modelRef: "anthropic/claude-sonnet-4-6",
+    });
+    expect(mockAuth.list).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(true);
   });
 });

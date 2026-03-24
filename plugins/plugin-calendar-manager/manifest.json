@@ -1,0 +1,11 @@
+{
+  "id": "plugin-calendar-manager",
+  "name": "Calendar Manager",
+  "version": "1.0.0",
+  "description": "Manage Google Calendar events, create meetings and set reminders automatically.",
+  "author": "Codex Community",
+  "tags": [
+    "calendar",
+    "productivity"
+  ]
+}

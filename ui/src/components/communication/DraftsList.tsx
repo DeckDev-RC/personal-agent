@@ -1,22 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Mail, MessageSquare, Hash, Trash2, Edit, Send, Clock } from "lucide-react";
-import Button from "../shared/Button";
+import { Clock, Edit, Hash, Mail, MessageSquare, Send, Trash2 } from "lucide-react";
+import { getDraftChannel, type DraftRecord } from "../../../../src/types/communication.js";
 import Badge from "../shared/Badge";
+import Button from "../shared/Button";
 import EmptyState from "../shared/EmptyState";
 import ComposeView from "./ComposeView";
-
-type DraftRecord = {
-  id: string;
-  type: string;
-  to: string;
-  subject: string;
-  body: string;
-  status: string;
-  sentAt?: number;
-  createdAt: number;
-  updatedAt: number;
-};
 
 const api = () => (window as any).codexAgent;
 
@@ -34,20 +23,30 @@ export default function DraftsList() {
   }
 
   useEffect(() => {
-    if (!loaded) void loadDrafts();
+    if (!loaded) {
+      void loadDrafts();
+    }
   }, [loaded]);
 
-  const typeIcon = (type: string) => {
-    if (type === "email") return Mail;
-    if (type === "slack") return Hash;
+  function typeIcon(type: DraftRecord["type"]) {
+    if (type === "email") {
+      return Mail;
+    }
+    if (type === "slack") {
+      return Hash;
+    }
     return MessageSquare;
-  };
+  }
 
-  const statusColor = (status: string) => {
-    if (status === "sent") return "green";
-    if (status === "failed") return "red";
+  function statusColor(status: DraftRecord["status"]) {
+    if (status === "sent") {
+      return "green";
+    }
+    if (status === "failed") {
+      return "red";
+    }
     return "yellow";
-  };
+  }
 
   async function handleDelete(id: string) {
     await api().drafts.delete(id);
@@ -63,10 +62,11 @@ export default function DraftsList() {
     return (
       <ComposeView
         draftId={editingDraft?.id}
-        initialType={editingDraft?.type as any ?? "email"}
+        initialType={editingDraft?.type ?? "email"}
         initialTo={editingDraft?.to ?? ""}
         initialSubject={editingDraft?.subject ?? ""}
         initialBody={editingDraft?.body ?? ""}
+        initialMcpServerId={editingDraft?.mcpServerId}
         onSave={() => {
           setEditingDraft(null);
           setComposing(false);
@@ -86,7 +86,7 @@ export default function DraftsList() {
   }
 
   return (
-    <div className="flex flex-col gap-3 p-4 h-full overflow-y-auto">
+    <div className="flex h-full flex-col gap-3 overflow-y-auto p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-text-primary">
           {t("communication.drafts", "Rascunhos e Mensagens")}
@@ -101,45 +101,62 @@ export default function DraftsList() {
         <EmptyState
           icon={Mail}
           title={t("communication.noDrafts", "Nenhum rascunho")}
-          description={t("communication.noDraftsDesc", "Crie uma nova mensagem para começar.")}
+          description={t("communication.noDraftsDesc", "Crie uma nova mensagem para comecar.")}
         />
       )}
 
       <div className="flex flex-col gap-2">
         {drafts.map((draft) => {
           const Icon = typeIcon(draft.type);
+          const channel = getDraftChannel(draft.type);
+
           return (
             <div
               key={draft.id}
-              className="flex items-start gap-3 rounded-lg border border-border bg-bg-secondary p-3 hover:bg-white/5 transition-colors"
+              className="flex items-start gap-3 rounded-lg border border-border bg-bg-secondary p-3 transition-colors hover:bg-white/5"
             >
-              <Icon size={16} className="text-text-secondary mt-0.5 shrink-0" />
-              <div className="flex-1 min-w-0">
+              <Icon size={16} className="mt-0.5 shrink-0 text-text-secondary" />
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-text-primary truncate">{draft.to || "(sem destinatário)"}</span>
-                  <Badge color={statusColor(draft.status)} size="sm">{draft.status}</Badge>
+                  <span className="truncate text-xs font-medium text-text-primary">
+                    {draft.to || "(sem destinatario)"}
+                  </span>
+                  <Badge color={statusColor(draft.status)} size="sm">
+                    {draft.status}
+                  </Badge>
+                  <Badge color="gray" size="sm">
+                    {channel.label}
+                  </Badge>
                 </div>
-                {draft.subject && (
-                  <p className="text-xs text-text-secondary truncate mt-0.5">{draft.subject}</p>
-                )}
-                <p className="text-xs text-text-secondary/70 truncate mt-0.5">{draft.body.slice(0, 100)}</p>
-                <div className="flex items-center gap-1 mt-1 text-[10px] text-text-secondary/50">
+                {draft.subject && <p className="mt-0.5 truncate text-xs text-text-secondary">{draft.subject}</p>}
+                <p className="mt-0.5 truncate text-xs text-text-secondary/70">{draft.body.slice(0, 100)}</p>
+                <div className="mt-1 flex items-center gap-1 text-[10px] text-text-secondary/50">
                   <Clock size={10} />
                   <span>{new Date(draft.updatedAt).toLocaleString()}</span>
+                  {draft.mcpServerId && <span className="truncate">via {draft.mcpServerId}</span>}
                 </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex shrink-0 items-center gap-1">
                 {draft.status === "draft" && (
                   <>
-                    <button onClick={() => setEditingDraft(draft)} className="text-text-secondary hover:text-text-primary p-1 cursor-pointer">
+                    <button
+                      onClick={() => setEditingDraft(draft)}
+                      className="cursor-pointer p-1 text-text-secondary hover:text-text-primary"
+                    >
                       <Edit size={14} />
                     </button>
-                    <button onClick={() => handleSend(draft.id)} className="text-text-secondary hover:text-accent p-1 cursor-pointer">
+                    <button
+                      onClick={() => handleSend(draft.id)}
+                      className="cursor-pointer p-1 text-text-secondary hover:text-accent-blue"
+                    >
                       <Send size={14} />
                     </button>
                   </>
                 )}
-                <button onClick={() => handleDelete(draft.id)} className="text-text-secondary hover:text-red-400 p-1 cursor-pointer">
+                <button
+                  onClick={() => handleDelete(draft.id)}
+                  className="cursor-pointer p-1 text-text-secondary hover:text-red-400"
+                >
                   <Trash2 size={14} />
                 </button>
               </div>

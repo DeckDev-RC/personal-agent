@@ -4,9 +4,26 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   test: {
-    environment: "jsdom",
     globals: true,
-    setupFiles: ["./ui/src/__tests__/setup.ts"],
-    include: ["ui/src/**/*.test.{ts,tsx}"],
+    projects: [
+      {
+        plugins: [react()],
+        test: {
+          name: "ui",
+          environment: "jsdom",
+          include: ["ui/src/**/*.test.{ts,tsx}"],
+          setupFiles: ["./ui/src/__tests__/setup.ts"],
+          globals: true,
+        },
+      },
+      {
+        test: {
+          name: "desktop",
+          environment: "node",
+          include: ["desktop/__tests__/**/*.test.ts"],
+          globals: true,
+        },
+      },
+    ],
   },
 });

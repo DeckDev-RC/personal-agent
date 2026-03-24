@@ -25,8 +25,10 @@ import {
   getProviderAuthStatus,
   listProviderAuthStatuses,
   saveProviderAuthInput,
+  testProviderConnection,
 } from "./services/providerAuthStore.js";
 import { runSingleTurnText } from "./services/runtimeCore.js";
+import * as gatewayServer from "./services/gatewayServer.js";
 
 const require = createRequire(import.meta.url);
 const electron = require("electron") as typeof import("electron");
@@ -65,6 +67,19 @@ function promptForRedirectViaUI(prompt: { message: string; placeholder?: string 
     pendingOAuthPromptResolve = resolve;
     pendingOAuthPromptReject = reject;
   });
+}
+
+function cancelPendingOAuthPrompt(message = "OAuth login canceled by user."): boolean {
+  if (!pendingOAuthPromptReject) {
+    return false;
+  }
+
+  const reject = pendingOAuthPromptReject;
+  pendingOAuthPromptResolve = null;
+  pendingOAuthPromptReject = null;
+  reject(new Error(message));
+  mainWindow?.webContents.send("oauthPromptDismissed");
+  return true;
 }
 
 function emitRuntimeEvent(event: any) {
@@ -190,8 +205,19 @@ async function handleLogin() {
     },
   };
 
-  const result = await loginAndStoreOpenAICodexOAuth({ verbose: false, ui });
-  return { ok: true, email: result.email };
+  try {
+    const result = await loginAndStoreOpenAICodexOAuth({ verbose: false, ui });
+    return { ok: true, email: result.email };
+  } finally {
+    cancelPendingOAuthPrompt("OAuth flow ended.");
+    mainWindow?.webContents.send("codexProgress", "");
+  }
+}
+
+async function handleCancelLogin() {
+  cancelPendingOAuthPrompt("OAuth login canceled by user.");
+  mainWindow?.webContents.send("codexProgress", "");
+  return { ok: true };
 }
 
 async function handleCheckAuth() {
@@ -222,13 +248,25 @@ async function handleSaveAuth(args: { provider: string; apiKey?: string; owner?:
 }
 
 async function handleDeleteAuth(provider: string) {
-  if (provider === "openai-codex" || provider === "openai") {
+  if (provider === "openai-codex") {
     await deleteStoredOpenAICodexCreds();
     return { ok: true, status: await getProviderAuthStatus("openai-codex") };
   }
 
   const status = await deleteProviderAuth(provider);
   return { ok: true, status };
+}
+
+async function handleTestAuth(args: {
+  provider: string;
+  apiKey?: string;
+  owner?: string;
+  baseUrl?: string;
+  modelRef?: string;
+  timeoutMs?: number;
+}) {
+  const result = await testProviderConnection(args);
+  return { ok: result.ok, status: result.status, message: result.message };
 }
 
 // --- IPC Handlers: Chat (legacy single-turn) ---
@@ -356,6 +394,19 @@ function handleWindowMinimize() {
   mainWindow?.minimize();
 }
 
+function handleWindowToggleMaximize() {
+  if (!mainWindow) {
+    return;
+  }
+
+  if (mainWindow.isMaximized()) {
+    mainWindow.unmaximize();
+    return;
+  }
+
+  mainWindow.maximize();
+}
+
 function handleWindowClose() {
   mainWindow?.close();
 }
@@ -477,14 +528,22 @@ function registerIpcHandlers() {
   safeHandle("codex:logout", () => handleLogout());
   safeHandle("auth:list", () => handleListAuth());
   safeHandle("auth:login", (_event, provider?: string) => {
-    if (!provider || provider === "openai-codex" || provider === "openai") {
+    if (!provider || provider === "openai-codex") {
       return handleLogin();
     }
     throw new Error(`Interactive login is not supported for provider: ${provider}`);
   });
+  safeHandle("auth:cancelLogin", () => handleCancelLogin());
   safeHandle("auth:save", (_event, args: { provider: string; apiKey?: string; owner?: string; baseUrl?: string }) =>
     handleSaveAuth(args),
   );
+  safeHandle("auth:test", (_event, args: {
+    provider: string;
+    apiKey?: string;
+    baseUrl?: string;
+    modelRef?: string;
+    timeoutMs?: number;
+  }) => handleTestAuth(args));
   safeHandle("auth:delete", (_event, provider: string) => handleDeleteAuth(provider));
   safeHandle("codex:chat", (_event, args: { model?: string; modelRef?: string; message: string }) =>
     handleChat(args),
@@ -500,10 +559,7 @@ function registerIpcHandlers() {
 
   // Window controls
   ipcMain.on("window:minimize", () => handleWindowMinimize());
-  ipcMain.on("window:close", () => handleWindowClose());
-
-  // Window controls
-  ipcMain.on("window:minimize", () => handleWindowMinimize());
+  ipcMain.on("window:toggleMaximize", () => handleWindowToggleMaximize());
   ipcMain.on("window:close", () => handleWindowClose());
 
   // Workflows
@@ -565,6 +621,18 @@ function registerIpcHandlers() {
   safeHandle("agents:suggest", (_e, args: { prompt: string; currentAgentId?: string }) =>
     daemonClient().post("/agents/suggest", args),
   );
+  safeHandle("automation:inspect", (_e, packageId: string) =>
+    daemonClient().get(`/automation/packages/${packageId}/inspect`),
+  );
+  safeHandle("automation:validate", (_e, packageId: string) =>
+    daemonClient().post(`/automation/packages/${packageId}/validate`, {}),
+  );
+  safeHandle("automation:activate", (_e, packageId: string) =>
+    daemonClient().post(`/automation/packages/${packageId}/activate`, {}),
+  );
+  safeHandle("automation:deactivate", (_e, packageId: string) =>
+    daemonClient().post(`/automation/packages/${packageId}/deactivate`, {}),
+  );
   safeHandle("proactive:suggestions", (_e, args: any) =>
     daemonClient().post("/proactive/suggestions", args),
   );
@@ -588,6 +656,22 @@ function registerIpcHandlers() {
   safeHandle("store:contexts:get", (_e, id: string) => daemonClient().get(`/entities/contexts/${id}`));
   safeHandle("store:contexts:save", (_e, projectContext: any) => daemonClient().post("/entities/contexts", projectContext));
   safeHandle("store:contexts:delete", (_e, id: string) => daemonClient().delete(`/entities/contexts/${id}`));
+
+  // Store: Automation Packages
+  safeHandle("store:automationPackages:list", () => daemonClient().get("/entities/automation_packages"));
+  safeHandle("store:automationPackages:get", (_e, id: string) => daemonClient().get(`/entities/automation_packages/${id}`));
+  safeHandle("store:automationPackages:save", (_e, automationPackage: any) =>
+    daemonClient().post("/entities/automation_packages", automationPackage),
+  );
+  safeHandle("store:automationPackages:delete", (_e, id: string) =>
+    daemonClient().delete(`/entities/automation_packages/${id}`),
+  );
+
+  // Store: Connections
+  safeHandle("store:connections:list", () => daemonClient().get("/entities/connections"));
+  safeHandle("store:connections:get", (_e, id: string) => daemonClient().get(`/entities/connections/${id}`));
+  safeHandle("store:connections:save", (_e, connection: any) => daemonClient().post("/entities/connections", connection));
+  safeHandle("store:connections:delete", (_e, id: string) => daemonClient().delete(`/entities/connections/${id}`));
 
   // Store: MCP Servers
   safeHandle("store:mcp:list", () => daemonClient().get("/entities/mcp"));
@@ -670,6 +754,19 @@ function registerIpcHandlers() {
     daemonClient().post("/runs/approve", args),
   );
   safeHandle("runs:abort", (_e, runId: string) => daemonClient().post(`/runs/${runId}/abort`));
+
+  // Subagents
+  safeHandle("subagents:list", (_e, args?: { status?: string; parentSessionId?: string; requestedBy?: string; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (args?.status) query.set("status", args.status);
+    if (args?.parentSessionId) query.set("parentSessionId", args.parentSessionId);
+    if (args?.requestedBy) query.set("requestedBy", args.requestedBy);
+    if (typeof args?.limit === "number") query.set("limit", String(args.limit));
+    return daemonClient().get(`/subagents${query.toString() ? `?${query.toString()}` : ""}`);
+  });
+  safeHandle("subagents:get", (_e, subagentId: string) => daemonClient().get(`/subagents/${subagentId}`));
+  safeHandle("subagents:spawn", (_e, args: any) => daemonClient().post("/subagents/spawn", args));
+  safeHandle("subagents:cancel", (_e, subagentId: string) => daemonClient().post(`/subagents/${subagentId}/cancel`, {}));
 
   // Workspaces v2
   safeHandle("workspaces:setRoot", async (_e, args: { sessionId: string; rootPath: string }) => {
@@ -796,6 +893,14 @@ function registerIpcHandlers() {
   safeHandle("drafts:update", (_e, draftId: string, patch: any) => daemonClient().patch(`/drafts/${draftId}`, patch));
   safeHandle("drafts:send", (_e, draftId: string) => daemonClient().post(`/drafts/${draftId}/send`, {}));
   safeHandle("drafts:delete", (_e, draftId: string) => daemonClient().delete(`/drafts/${draftId}`));
+  safeHandle("inbox:list", (_e, args?: { limit?: number; onlyUnread?: boolean; query?: string; channel?: string }) => {
+    const query = new URLSearchParams();
+    if (typeof args?.limit === "number") query.set("limit", String(args.limit));
+    if (typeof args?.onlyUnread === "boolean") query.set("onlyUnread", String(args.onlyUnread));
+    if (args?.query?.trim()) query.set("query", args.query.trim());
+    if (args?.channel?.trim()) query.set("channel", args.channel.trim());
+    return daemonClient().get(`/inbox${query.toString() ? `?${query.toString()}` : ""}`);
+  });
 
   // Analytics
   safeHandle("analytics:events", (_e, args?: { eventType?: string; since?: number; until?: number; limit?: number }) => {
@@ -838,6 +943,30 @@ function registerIpcHandlers() {
 
   // Connectivity
   safeHandle("connectivity:status", () => daemonClient().get("/connectivity"));
+
+  // Cron / Scheduled Tasks
+  safeHandle("cron:list", () => daemonClient().get("/cron"));
+  safeHandle("cron:get", (_e, id: string) => daemonClient().get(`/cron/${id}`));
+  safeHandle("cron:create", (_e, data: any) => daemonClient().post("/cron", data));
+  safeHandle("cron:update", (_e, id: string, patch: any) => daemonClient().patch(`/cron/${id}`, patch));
+  safeHandle("cron:delete", (_e, id: string) => daemonClient().delete(`/cron/${id}`));
+  safeHandle("cron:toggle", (_e, id: string, enabled: boolean) => daemonClient().post(`/cron/${id}/toggle`, { enabled }));
+
+  // Plugins
+  safeHandle("plugins:list", () => daemonClient().get("/plugins"));
+  safeHandle("plugins:install", (_e, manifest: any) => daemonClient().post("/plugins", manifest));
+  safeHandle("plugins:activate", (_e, id: string) => daemonClient().post(`/plugins/${id}/activate`, {}));
+  safeHandle("plugins:deactivate", (_e, id: string) => daemonClient().post(`/plugins/${id}/deactivate`, {}));
+  safeHandle("plugins:uninstall", (_e, id: string) => daemonClient().delete(`/plugins/${id}`));
+
+  // Gateway
+  safeHandle("gateway:start", (_e, config: any) => gatewayServer.startGateway(config));
+  safeHandle("gateway:stop", () => gatewayServer.stopGateway());
+  safeHandle("gateway:status", () => ({
+    running: gatewayServer.isGatewayRunning(),
+    config: gatewayServer.getGatewayConfig(),
+  }));
+  safeHandle("gateway:config", (_e, config: any) => gatewayServer.setGatewayConfig(config));
 
   // OAuth prompt response
   ipcMain.on("oauthPromptResponse", (_event, value: unknown) => {
@@ -903,4 +1032,3 @@ app.on("window-all-closed", () => {
 app.on("before-quit", async () => {
   await daemon?.stop();
 });
-

@@ -35,7 +35,7 @@ export default function FirstDayChallenge({ onDismiss }: { onDismiss: () => void
     <div className="rounded-xl border border-border bg-bg-secondary p-4">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Trophy size={16} className={allDone ? "text-yellow-400" : "text-accent"} />
+          <Trophy size={16} className={allDone ? "text-yellow-400" : "text-accent-orange"} />
           <h3 className="text-sm font-semibold text-text-primary">
             {t("challenge.title", "Desafio do Primeiro Dia")}
           </h3>

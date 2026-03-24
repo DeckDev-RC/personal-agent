@@ -55,8 +55,27 @@ export default function ChatInput({
   const { t, i18n } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState("");
+  const [localValue, setLocalValue] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const isControlled = typeof draftValue === "string";
+  const value = isControlled ? draftValue : localValue;
+
+  const setValue = useCallback(
+    (nextValue: React.SetStateAction<string>) => {
+      const resolvedValue =
+        typeof nextValue === "function"
+          ? nextValue(value)
+          : nextValue;
+
+      if (isControlled) {
+        onDraftChange?.(resolvedValue);
+        return;
+      }
+
+      setLocalValue(resolvedValue);
+    },
+    [isControlled, onDraftChange, value],
+  );
 
   // --- Input History ---
   const [inputHistory, setInputHistory] = useState<string[]>([]);
@@ -83,7 +102,7 @@ export default function ChatInput({
       );
       if (started) setListening(true);
     }
-  }, [listening, i18n.language]);
+  }, [i18n.language, listening, setValue]);
 
   // --- Slash Commands ---
   const [showSlashMenu, setShowSlashMenu] = useState(false);
@@ -132,15 +151,11 @@ export default function ChatInput({
   }, [disabled, streaming]);
 
   useEffect(() => {
-    if (typeof draftValue !== "string" || draftValue === value) {
-      return;
-    }
-    setValue(draftValue);
-  }, [draftValue, value]);
-
-  useEffect(() => {
-    onDraftChange?.(value);
-  }, [onDraftChange, value]);
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+  }, [value]);
 
   const executeSlashCommand = useCallback(
     (command: string) => {
@@ -148,7 +163,7 @@ export default function ChatInput({
       setShowSlashMenu(false);
       onSlashCommand?.(command);
     },
-    [onSlashCommand],
+    [onSlashCommand, setValue],
   );
 
   function handleSubmit() {
@@ -261,9 +276,8 @@ export default function ChatInput({
     el.style.height = Math.min(el.scrollHeight, 200) + "px";
   }
 
-  async function handleFileSelection(event: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    const nextAttachments = await Promise.all(
+  async function readFilesAsAttachments(files: File[]): Promise<PendingAttachment[]> {
+    return await Promise.all(
       files.map(
         async (file) =>
           await new Promise<PendingAttachment>((resolve, reject) => {
@@ -280,7 +294,7 @@ export default function ChatInput({
                 binary += String.fromCharCode(bytes[index]);
               }
               resolve({
-                fileName: file.name,
+                fileName: file.name || "attachment",
                 mimeType: file.type || "application/octet-stream",
                 bytesBase64: btoa(binary),
                 byteSize: file.size,
@@ -291,7 +305,39 @@ export default function ChatInput({
           }),
       ),
     );
+  }
+
+  async function appendAttachments(files: File[]) {
+    if (files.length === 0) return;
+    const nextAttachments = await readFilesAsAttachments(files);
     setAttachments((current) => [...current, ...nextAttachments]);
+  }
+
+  async function handleFileSelection(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    await appendAttachments(files);
+  }
+
+  function handleDragOver(event: React.DragEvent<HTMLDivElement>) {
+    if (event.dataTransfer.types.includes("Files")) {
+      event.preventDefault();
+    }
+  }
+
+  function handleDrop(event: React.DragEvent<HTMLDivElement>) {
+    const files = Array.from(event.dataTransfer.files ?? []);
+    if (files.length === 0) return;
+    event.preventDefault();
+    void appendAttachments(files);
+  }
+
+  function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = Array.from(event.clipboardData.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+    event.preventDefault();
+    void appendAttachments(files);
   }
 
   const suggestionReason = useMemo(() => {
@@ -386,7 +432,11 @@ export default function ChatInput({
           </div>
         )}
 
-        <div className="flex items-end gap-2.5 rounded-xl border border-border bg-bg-secondary/90 px-3 py-2">
+        <div
+          className="flex items-end gap-2.5 rounded-xl border border-border bg-bg-secondary/90 px-3 py-2"
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-green/10 text-accent-green text-sm">
             &gt;
           </div>
@@ -427,6 +477,7 @@ export default function ChatInput({
           value={value}
           onChange={(e) => { setValue(e.target.value); handleInput(); }}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={t("chat.placeholder")}
           disabled={disabled}
           rows={1}

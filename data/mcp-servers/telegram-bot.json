@@ -1,0 +1,13 @@
+{
+  "id": "mcp-telegram",
+  "name": "Telegram Bot",
+  "description": "Enviar e receber mensagens via Telegram Bot API.",
+  "transport": "stdio",
+  "command": "npx",
+  "args": ["-y", "@anthropic/mcp-telegram"],
+  "env": {
+    "TELEGRAM_BOT_TOKEN": ""
+  },
+  "autoConnect": false,
+  "tags": ["messaging", "telegram"]
+}

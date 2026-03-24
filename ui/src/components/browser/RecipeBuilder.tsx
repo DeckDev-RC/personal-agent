@@ -11,15 +11,24 @@ const api = () => (window as any).codexAgent;
 type ActionField = {
   key: string;
   label: string;
-  type: "text" | "number" | "checkbox";
+  type: "text" | "number" | "checkbox" | "textarea";
   placeholder?: string;
 };
 
 const ACTION_OPTIONS: Array<{ value: WebRecipeStepAction; label: string }> = [
+  { value: "browser_tabs", label: "Listar abas" },
   { value: "browser_open", label: "Abrir URL" },
   { value: "browser_click", label: "Clicar elemento" },
+  { value: "browser_hover", label: "Passar o mouse" },
   { value: "browser_type", label: "Preencher campo" },
+  { value: "browser_drag", label: "Arrastar elemento" },
+  { value: "browser_select", label: "Selecionar opcao" },
+  { value: "browser_fill", label: "Preencher formulario" },
   { value: "browser_wait", label: "Aguardar" },
+  { value: "browser_evaluate", label: "Executar script" },
+  { value: "browser_batch", label: "Executar lote" },
+  { value: "browser_set_input_files", label: "Definir arquivos" },
+  { value: "browser_handle_dialog", label: "Preparar dialogo" },
   { value: "browser_extract_text", label: "Extrair texto" },
   { value: "browser_snapshot", label: "Snapshot da pagina" },
   { value: "browser_screenshot", label: "Screenshot" },
@@ -27,17 +36,62 @@ const ACTION_OPTIONS: Array<{ value: WebRecipeStepAction; label: string }> = [
 ];
 
 const ACTION_FIELDS: Record<WebRecipeStepAction, ActionField[]> = {
+  browser_tabs: [],
   browser_open: [{ key: "url", label: "URL", type: "text", placeholder: "https://example.com" }],
   browser_click: [{ key: "selector", label: "Seletor", type: "text", placeholder: "button[type=submit]" }],
+  browser_hover: [{ key: "selector", label: "Seletor", type: "text", placeholder: "button[type=submit]" }],
   browser_type: [
     { key: "selector", label: "Seletor", type: "text", placeholder: "input[name=email]" },
     { key: "text", label: "Texto", type: "text", placeholder: "valor a preencher" },
     { key: "submit", label: "Enviar com Enter", type: "checkbox" },
   ],
+  browser_drag: [
+    { key: "startSelector", label: "Seletor inicial", type: "text", placeholder: ".card-source" },
+    { key: "endSelector", label: "Seletor final", type: "text", placeholder: ".card-target" },
+  ],
+  browser_select: [
+    { key: "selector", label: "Seletor", type: "text", placeholder: "select[name=status]" },
+    { key: "values", label: "Valores", type: "text", placeholder: "approved, active" },
+  ],
+  browser_fill: [
+    {
+      key: "fields",
+      label: "Campos (JSON)",
+      type: "textarea",
+      placeholder:
+        '[{"selector":"input[name=email]","value":"user@example.com"},{"selector":"input[name=remember]","type":"checkbox","value":true}]',
+    },
+  ],
   browser_wait: [
     { key: "selector", label: "Seletor", type: "text", placeholder: ".ready" },
     { key: "text", label: "Texto esperado", type: "text", placeholder: "Deploy completed" },
     { key: "timeMs", label: "Tempo (ms)", type: "number", placeholder: "1000" },
+  ],
+  browser_evaluate: [
+    {
+      key: "fn",
+      label: "Funcao JS",
+      type: "textarea",
+      placeholder: "() => document.title",
+    },
+  ],
+  browser_batch: [
+    {
+      key: "actions",
+      label: "Acoes (JSON)",
+      type: "textarea",
+      placeholder:
+        '[{"kind":"click","selector":"button.save"},{"kind":"wait","text":"Saved"}]',
+    },
+    { key: "stopOnError", label: "Parar no primeiro erro", type: "checkbox" },
+  ],
+  browser_set_input_files: [
+    { key: "selector", label: "Seletor", type: "text", placeholder: "input[type=file]" },
+    { key: "paths", label: "Arquivos", type: "text", placeholder: "C:\\\\docs\\\\a.pdf, C:\\\\docs\\\\b.pdf" },
+  ],
+  browser_handle_dialog: [
+    { key: "accept", label: "Aceitar dialogo", type: "checkbox" },
+    { key: "promptText", label: "Texto do prompt", type: "text", placeholder: "valor opcional" },
   ],
   browser_extract_text: [{ key: "selector", label: "Seletor opcional", type: "text", placeholder: "main article" }],
   browser_snapshot: [],
@@ -326,6 +380,20 @@ export default function RecipeBuilder({ recipe, onClose }: RecipeBuilderProps) {
                         />
                         {field.label}
                       </label>
+                    ) : field.type === "textarea" ? (
+                      <TextArea
+                        key={field.key}
+                        label={field.label}
+                        value={String(testerArgs[field.key] ?? "")}
+                        placeholder={field.placeholder}
+                        className="min-h-28"
+                        onChange={(event) =>
+                          setTesterArgs((current) => ({
+                            ...current,
+                            [field.key]: event.target.value,
+                          }))
+                        }
+                      />
                     ) : (
                       <Input
                         key={field.key}
@@ -440,6 +508,23 @@ export default function RecipeBuilder({ recipe, onClose }: RecipeBuilderProps) {
                           />
                           {field.label}
                         </label>
+                      ) : field.type === "textarea" ? (
+                        <div key={field.key} className="md:col-span-2">
+                          <TextArea
+                            label={field.label}
+                            value={String(step.args[field.key] ?? "")}
+                            placeholder={field.placeholder}
+                            className="min-h-28"
+                            onChange={(event) =>
+                              updateStep(step.id, {
+                                args: {
+                                  ...step.args,
+                                  [field.key]: event.target.value,
+                                },
+                              })
+                            }
+                          />
+                        </div>
                       ) : (
                         <Input
                           key={field.key}

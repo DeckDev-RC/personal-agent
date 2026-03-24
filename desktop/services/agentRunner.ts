@@ -3,6 +3,7 @@ import type { ConversationMessage } from "../../src/types/conversation.js";
 import { splitModelRef } from "../../src/types/model.js";
 import type { McpTool } from "../../src/types/mcp.js";
 import { getToolsForServers, callTool } from "./mcpManager.js";
+import { getApiForProvider } from "./providers/providerApi.js";
 import { streamModelResponse } from "./runtimeCore.js";
 
 const EMPTY_USAGE: Usage = {
@@ -125,12 +126,7 @@ function buildAssistantMessage(message: ConversationMessage, model: string): Ass
   return {
     role: "assistant",
     content: content.length > 0 ? content : [{ type: "text", text: "" }],
-    api:
-      resolved.provider === "anthropic"
-        ? "anthropic-messages"
-        : resolved.provider === "ollama"
-          ? "openai-responses"
-          : "openai-codex-responses",
+    api: getApiForProvider(resolved.provider),
     provider: resolved.provider,
     model: resolved.modelRef,
     usage: EMPTY_USAGE,

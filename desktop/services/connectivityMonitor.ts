@@ -1,7 +1,7 @@
 import { lookup } from "node:dns/promises";
 import http from "node:http";
 import https from "node:https";
-import { normalizeProviderName } from "../../src/types/model.js";
+import { getProviderBaseUrl, normalizeProviderName } from "../../src/types/model.js";
 import { getProviderAuthStatus } from "./providerAuthStore.js";
 import { getSettingsV2 } from "./v2EntityStore.js";
 
@@ -22,17 +22,23 @@ async function resolveProbe(): Promise<ConnectivityProbe> {
   const settings = await getSettingsV2().catch(() => null);
   const provider = normalizeProviderName(settings?.provider ?? settings?.defaultModelRef);
 
-  if (provider === "anthropic") {
-    return { kind: "dns", host: "api.anthropic.com" };
-  }
-
   if (provider === "ollama") {
     const status = await getProviderAuthStatus("ollama").catch(() => null);
     const baseUrl = (status?.baseUrl ?? "http://localhost:11434").replace(/\/+$/, "");
     return { kind: "http", url: `${baseUrl}/api/tags` };
   }
 
-  return { kind: "dns", host: "chatgpt.com" };
+  const status = await getProviderAuthStatus(provider).catch(() => null);
+  const configuredBaseUrl = status?.baseUrl?.trim() || getProviderBaseUrl(provider);
+  if (configuredBaseUrl) {
+    try {
+      return { kind: "dns", host: new URL(configuredBaseUrl).hostname };
+    } catch {
+      // Fall through to defaults below.
+    }
+  }
+
+  return { kind: "dns", host: provider === "openai-codex" ? "chatgpt.com" : "api.openai.com" };
 }
 
 async function probeDns(host: string): Promise<boolean> {

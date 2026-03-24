@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState, useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next";
 import MessageBubble from "./MessageBubble";
 import { ArrowDown, Loader2 } from "lucide-react";
+import type { AttachmentPayload } from "../../../../src/types/runtime.js";
 
 type Message = {
   id: string;
@@ -12,6 +13,7 @@ type Message = {
   timestamp: number;
   toolName?: string;
   phase?: string;
+  attachments?: AttachmentPayload[];
 };
 
 type MessageListProps = {
@@ -19,6 +21,8 @@ type MessageListProps = {
   streaming: boolean;
   streamingText: string;
   thinkingText: string;
+  onSpeakMessage?: (messageId: string, content: string) => void;
+  speakingMessageId?: string | null;
 };
 
 function getDateLabel(timestamp: number, t: (key: string) => string): string {
@@ -59,6 +63,8 @@ export default function MessageList({
   streaming,
   streamingText,
   thinkingText,
+  onSpeakMessage,
+  speakingMessageId,
 }: MessageListProps) {
   const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -121,6 +127,9 @@ export default function MessageList({
                   timestamp={msg.timestamp}
                   toolName={msg.toolName}
                   phase={msg.phase}
+                  attachments={msg.attachments}
+                  onSpeak={msg.role === "assistant" && onSpeakMessage ? (content) => onSpeakMessage(msg.id, content) : undefined}
+                  speaking={speakingMessageId === msg.id}
                 />
               ))}
             </React.Fragment>

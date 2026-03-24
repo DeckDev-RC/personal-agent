@@ -7,6 +7,15 @@ export type ConversationMessage = {
   thinkingContent?: string;
   toolCallId?: string;
   toolName?: string;
+  attachments?: Array<{
+    artifactId: string;
+    sessionId: string;
+    fileName: string;
+    mimeType: string;
+    byteSize: number;
+    extractedTextAvailable: boolean;
+    bytesBase64: string;
+  }>;
 };
 
 export type Conversation = {

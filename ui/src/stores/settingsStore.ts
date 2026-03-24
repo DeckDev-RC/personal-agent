@@ -1,44 +1,16 @@
 import { create } from "zustand";
 import {
-  getModelId,
   getDefaultModelRef,
-  normalizeProviderName,
-  splitModelRef,
   type CanonicalProviderName,
 } from "../../../src/types/model.js";
-import type { ProactivitySettings } from "../../../src/types/proactive.js";
-
-export type ThemeMode = "dark" | "light" | "system";
+import {
+  DEFAULT_APP_SETTINGS,
+  normalizeAppSettings,
+  type AppSettings,
+  type ThemeMode,
+} from "../../../src/settings/appSettings.js";
 
 export type ProviderName = CanonicalProviderName;
-
-type AppSettings = {
-  provider: ProviderName;
-  defaultModelRef: string;
-  fastModelRef: string;
-  reviewModelRef: string;
-  defaultModel: string;
-  fastModel: string;
-  reviewModel: string;
-  language: "pt-BR" | "en" | "es" | "de" | "zh-CN" | "zh-TW";
-  themeMode: ThemeMode;
-  reasoningEffort: "low" | "medium" | "high" | "xhigh";
-  planMode: boolean;
-  fastMode: boolean;
-  onboardingCompleted: boolean;
-  globalSystemPrompt: string;
-  contextWindow: number;
-  compactAtTokens: number;
-  maxOutputTokens: number;
-  webSearch: {
-    endpoint: string;
-    apiKey: string;
-    timeoutMs: number;
-    maxResults: number;
-  };
-  reasoningPolicyByTask: Record<string, "low" | "medium" | "high" | "xhigh">;
-  proactivity: ProactivitySettings;
-};
 
 type SettingsState = {
   settings: AppSettings;
@@ -67,91 +39,14 @@ function applyThemeToDOM(mode: ThemeMode) {
   }
 }
 
-const DEFAULT_SETTINGS: AppSettings = {
-  provider: "openai-codex",
-  defaultModelRef: getDefaultModelRef("openai-codex"),
-  fastModelRef: "openai-codex/gpt-5.4-mini",
-  reviewModelRef: getDefaultModelRef("openai-codex"),
-  defaultModel: getDefaultModelRef("openai-codex"),
-  fastModel: "openai-codex/gpt-5.4-mini",
-  reviewModel: getDefaultModelRef("openai-codex"),
-  language: "pt-BR",
-  themeMode: "dark",
-  reasoningEffort: "medium",
-  planMode: false,
-  fastMode: false,
-  onboardingCompleted: false,
-  globalSystemPrompt: "",
-  contextWindow: 128000,
-  compactAtTokens: 96000,
-  maxOutputTokens: 4096,
-  webSearch: {
-    endpoint: "",
-    apiKey: "",
-    timeoutMs: 15000,
-    maxResults: 5,
-  },
-  reasoningPolicyByTask: {
-    chat_simple: "low",
-    plan_research: "medium",
-    code_read: "medium",
-    code_change: "high",
-    command_exec: "medium",
-    review_fix: "high",
-    tool_invoke: "medium",
-  },
-  proactivity: {
-    enabled: true,
-    dashboard: true,
-    chat: true,
-    frequency: "balanced",
-    suggestionTypes: {
-      tasks: true,
-      routines: true,
-      context: true,
-      communication: true,
-    },
-  },
-};
-
-function normalizeSettings(settings?: Partial<AppSettings> | null): AppSettings {
-  const provider = normalizeProviderName(
-    settings?.provider ??
-      splitModelRef(settings?.defaultModelRef ?? settings?.defaultModel).provider,
-  );
-  const defaultModelRef = splitModelRef(getModelId(settings?.defaultModelRef ?? settings?.defaultModel), provider).modelRef;
-  const fastModelRef = splitModelRef(getModelId(settings?.fastModelRef ?? settings?.fastModel), provider).modelRef;
-  const reviewModelRef = splitModelRef(getModelId(settings?.reviewModelRef ?? settings?.reviewModel), provider).modelRef;
-
-  return {
-    ...DEFAULT_SETTINGS,
-    ...(settings ?? {}),
-    provider,
-    defaultModelRef,
-    fastModelRef,
-    reviewModelRef,
-    defaultModel: defaultModelRef,
-    fastModel: fastModelRef,
-    reviewModel: reviewModelRef,
-    proactivity: {
-      ...DEFAULT_SETTINGS.proactivity,
-      ...(settings?.proactivity ?? {}),
-      suggestionTypes: {
-        ...DEFAULT_SETTINGS.proactivity.suggestionTypes,
-        ...(settings?.proactivity?.suggestionTypes ?? {}),
-      },
-    },
-  };
-}
-
 export const useSettingsStore = create<SettingsState>((set, get) => ({
-  settings: DEFAULT_SETTINGS,
+  settings: DEFAULT_APP_SETTINGS,
   loaded: false,
 
   loadSettings: async () => {
     try {
       const s = await api().store.getSettings();
-      const settings = normalizeSettings(s);
+      const settings = normalizeAppSettings(s);
       set({ settings, loaded: true });
       applyThemeToDOM(settings.themeMode);
     } catch {
@@ -161,7 +56,19 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   updateSettings: async (partial) => {
     const current = get().settings;
-    const updated = normalizeSettings({ ...current, ...partial });
+    const nextPartial: Partial<AppSettings> = { ...partial };
+
+    if (partial.provider && partial.provider !== current.provider && partial.defaultModelRef === undefined) {
+      const nextModelRef = getDefaultModelRef(partial.provider);
+      nextPartial.defaultModelRef = nextModelRef;
+      nextPartial.fastModelRef = partial.fastModelRef ?? nextModelRef;
+      nextPartial.reviewModelRef = partial.reviewModelRef ?? nextModelRef;
+      nextPartial.defaultModel = nextModelRef;
+      nextPartial.fastModel = nextModelRef;
+      nextPartial.reviewModel = nextModelRef;
+    }
+
+    const updated = normalizeAppSettings({ ...current, ...nextPartial });
     set({ settings: updated });
     if (partial.themeMode !== undefined) {
       applyThemeToDOM(partial.themeMode);

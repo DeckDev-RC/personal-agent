@@ -1,7 +1,7 @@
 import { streamOpenAIResponses } from "../../../src/openai/responsesClient.js";
 import type { LLMProvider, LLMProviderParams, StreamEvent } from "./types.js";
 
-export const openaiProvider: LLMProvider = {
+export const openaiCodexProvider: LLMProvider = {
   name: "openai-codex",
   displayName: "OpenAI Codex",
   authKind: "oauth",
@@ -36,3 +36,5 @@ export const openaiProvider: LLMProvider = {
     });
   },
 };
+
+export const openaiProvider = openaiCodexProvider;

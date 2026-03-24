@@ -16,6 +16,13 @@ type ManagedServer = {
 
 const servers = new Map<string, ManagedServer>();
 
+export type McpToolCallResult = {
+  content: string;
+  isError: boolean;
+  structuredContent?: Record<string, unknown>;
+  rawContent?: unknown[];
+};
+
 function createClient(): Client {
   return new Client({ name: "codex-agent", version: "1.0.0" }, { capabilities: {} });
 }
@@ -165,7 +172,7 @@ export async function callTool(
   serverId: string,
   toolName: string,
   args: Record<string, unknown>,
-): Promise<{ content: string; isError: boolean }> {
+): Promise<McpToolCallResult> {
   const managed = servers.get(serverId);
   if (!managed || !managed.connected) {
     return { content: `MCP server "${serverId}" not connected.`, isError: true };
@@ -176,6 +183,11 @@ export async function callTool(
     return {
       content: formatToolContent(result.content),
       isError: result.isError === true,
+      structuredContent:
+        result.structuredContent && typeof result.structuredContent === "object"
+          ? (result.structuredContent as Record<string, unknown>)
+          : undefined,
+      rawContent: Array.isArray(result.content) ? result.content : undefined,
     };
   } catch (error: any) {
     return { content: error?.message ?? String(error), isError: true };

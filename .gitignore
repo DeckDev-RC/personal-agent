@@ -8,6 +8,11 @@ data/*
 !data/agents/**
 !data/workflows/
 !data/workflows/**
+!data/templates/
+!data/templates/**
+!data/mcp-servers/
+!data/mcp-servers/**
+data/openai-codex-oauth.json
 temp-electron-app/
 coverage/
 *.log

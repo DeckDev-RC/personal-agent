@@ -1,5 +1,5 @@
 {
-  "app": { "name": "Codex Agent" },
+  "app": { "name": "K" },
   "nav": { "chat": "聊天", "agents": "代理", "skills": "技能", "workflows": "工作流程", "mcp": "MCPs", "analytics": "分析", "logs": "日誌", "settings": "設定" },
   "chat": {
     "placeholder": "輸入訊息...", "send": "傳送", "newConversation": "新對話",
@@ -57,7 +57,7 @@
     "shortcuts.sidebar": "側邊欄", "shortcuts.commandPalette": "命令面板",
     "shortcuts.sendMessage": "傳送訊息", "shortcuts.newLine": "換行"
   },
-  "common": { "save": "儲存", "cancel": "取消", "delete": "刪除", "create": "建立", "edit": "編輯", "close": "關閉", "confirm": "確認", "search": "搜尋...", "loading": "載入中...", "error": "錯誤", "success": "成功", "noResults": "無結果", "comingSoon": "即將推出", "minimize": "最小化", "closeWindow": "關閉" },
+  "common": { "save": "儲存", "cancel": "取消", "delete": "刪除", "create": "建立", "edit": "編輯", "close": "關閉", "confirm": "確認", "search": "搜尋...", "loading": "載入中...", "error": "錯誤", "success": "成功", "noResults": "無結果", "comingSoon": "即將推出", "minimize": "最小化", "maximizeWindow": "最大化或還原", "closeWindow": "關閉" },
   "slashCommand": { "new": "新對話", "newDesc": "開始新對話", "clear": "清除", "clearDesc": "清除目前對話", "export": "匯出", "exportDesc": "匯出對話為 Markdown", "search": "搜尋", "searchDesc": "在對話中搜尋", "model": "模型", "modelDesc": "切換目前模型" },
   "commandPalette": { "placeholder": "輸入命令...", "newChat": "新對話", "createAgent": "建立代理", "createSkill": "建立技能", "createWorkflow": "建立工作流程", "addMcp": "新增 MCP 伺服器", "openSettings": "開啟設定", "switchLanguage": "切換語言" }
 }

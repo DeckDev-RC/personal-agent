@@ -1,0 +1,11 @@
+{
+  "id": "plugin-code-reviewer",
+  "name": "Code Reviewer",
+  "version": "1.0.0",
+  "description": "Automated code review with AI-powered suggestions and best practices enforcement.",
+  "author": "Codex Community",
+  "tags": [
+    "dev",
+    "code-review"
+  ]
+}

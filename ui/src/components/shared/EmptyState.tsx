@@ -2,16 +2,30 @@ import React from "react";
 import Button from "./Button";
 
 type EmptyStateProps = {
-  icon?: React.ReactNode;
+  icon?: React.ReactNode | React.ElementType;
   title: string;
   description?: string;
   action?: { label: string; onClick: () => void };
 };
 
 export default function EmptyState({ icon, title, description, action }: EmptyStateProps) {
+  let renderedIcon: React.ReactNode = null;
+
+  if (React.isValidElement(icon)) {
+    renderedIcon = icon;
+  } else if (
+    icon &&
+    (typeof icon === "function" || (typeof icon === "object" && "$$typeof" in icon))
+  ) {
+    const Icon = icon as React.ElementType;
+    renderedIcon = <Icon size={20} />;
+  } else if (icon) {
+    renderedIcon = icon;
+  }
+
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-      {icon && <div className="text-text-secondary opacity-40 text-4xl">{icon}</div>}
+      {renderedIcon && <div className="text-text-secondary opacity-40 text-4xl">{renderedIcon}</div>}
       <h3 className="text-sm font-medium text-text-secondary">{title}</h3>
       {description && <p className="max-w-xs text-xs text-text-secondary/70">{description}</p>}
       {action && (

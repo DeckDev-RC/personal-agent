@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { AssistantMessage, Context, Message, ToolResultMessage, Usage } from "@mariozechner/pi-ai";
-import { splitModelRef } from "../../src/types/model.js";
+import { providerSupportsCapability, splitModelRef } from "../../src/types/model.js";
 import type { Workflow } from "../../src/types/workflow.js";
-import type { SessionMessageRecord } from "../../src/types/runtime.js";
+import type { AttachmentRecord, SessionMessageRecord } from "../../src/types/runtime.js";
+import { loadImagePartsForMessage } from "./messageAttachments.js";
 import { buildTaskPolicy, classifyTask } from "./taskPolicy.js";
+import { getApiForProvider } from "./providers/providerApi.js";
 import { streamModelResponse } from "./runtimeCore.js";
 import { getSettingsV2, listMcpServersV2, type V2AppSettings } from "./v2EntityStore.js";
 import {
@@ -29,7 +31,11 @@ import {
 } from "./executionRegistry.js";
 import { executeTrackedToolInvocation, startDirectToolInvocation } from "./toolExecutionService.js";
 import { enqueueScopedJob } from "./jobQueue.js";
+import { getAutomationPackage } from "./automationPackageStore.js";
+import { ensureAutomationToolCallAllowed } from "./automationPolicy.js";
+import { recordAutomationWorkflowRun } from "./automationRunState.js";
 import { injectProjectContextPrompt, resolveProjectContextId } from "./projectContext.js";
+import { getWebRecipe } from "./webRecipes.js";
 import { ensureCoworkWorkspaceStructure, inferCoworkSkillFromPrompt, saveCoworkOutput } from "./coworkWorkspace.js";
 import { gatherContextForPrompt, reindexWorkspace, setWorkspaceRootForSession } from "./workspaceIndex.js";
 
@@ -53,7 +59,7 @@ export type RuntimeEvent =
   | { type: "text_delta"; runId: string; sessionId: string; phase: string; delta: string }
   | { type: "thinking_delta"; runId: string; sessionId: string; phase: string; delta: string }
   | { type: "toolcall"; runId: string; sessionId: string; toolCallId: string; toolName: string; args: Record<string, unknown>; source: "native" | "mcp" | "browser"; serverId?: string; serverName?: string }
-  | { type: "toolresult"; runId: string; sessionId: string; toolCallId: string; toolName: string; content: string; isError: boolean; source: "native" | "mcp" | "browser"; serverId?: string; serverName?: string }
+  | { type: "toolresult"; runId: string; sessionId: string; toolCallId: string; toolName: string; content: string; isError: boolean; source: "native" | "mcp" | "browser"; serverId?: string; serverName?: string; attachments?: AttachmentRecord[] }
   | { type: "approval_required"; runId: string; sessionId: string; approvalId: string; toolCallId: string; toolName: string; reason: string; riskLevel: "medium" | "high"; request: Record<string, unknown> }
   | { type: "approval_resolved"; runId: string; sessionId: string; approvalId: string; approved: boolean; note?: string }
   | { type: "artifact"; runId: string; sessionId: string; artifactId: string; label: string; artifactType: string }
@@ -74,12 +80,7 @@ function toAssistantMessage(message: SessionMessageRecord, modelRef: string): As
   return {
     role: "assistant",
     content,
-    api:
-      resolved.provider === "anthropic"
-        ? "anthropic-messages"
-        : resolved.provider === "ollama"
-          ? "openai-responses"
-          : "openai-codex-responses",
+    api: getApiForProvider(resolved.provider),
     provider: resolved.provider,
     model: resolved.modelRef,
     usage: EMPTY_USAGE,
@@ -104,8 +105,13 @@ function buildToolResultMessage(params: {
   };
 }
 
-function buildContextMessages(messages: SessionMessageRecord[], modelRef: string): Message[] {
-  return messages.map<Message>((message) => {
+async function buildContextMessages(messages: SessionMessageRecord[], modelRef: string): Promise<Message[]> {
+  const provider = splitModelRef(modelRef).provider;
+  const visionEnabled = providerSupportsCapability(provider, "vision");
+
+  const contextMessages: Message[] = [];
+
+  for (const message of messages) {
     if (message.role === "assistant" || message.role === "system") {
       const assistant = toAssistantMessage(message, modelRef);
       const toolCalls = Array.isArray(message.metadata?.toolCalls)
@@ -122,35 +128,56 @@ function buildContextMessages(messages: SessionMessageRecord[], modelRef: string
           })),
         ];
       }
-      return assistant;
+      contextMessages.push(assistant);
+      continue;
     }
     if (message.role === "tool") {
-      return buildToolResultMessage({
+      contextMessages.push(buildToolResultMessage({
         toolCallId: message.toolCallId ?? message.id,
         toolName: message.toolName ?? "tool",
         content: message.content,
         isError: Boolean(message.metadata?.isError),
-      });
+      }));
+      continue;
     }
-    return {
+
+    if (visionEnabled) {
+      const imageParts = await loadImagePartsForMessage(message);
+      if (imageParts.length > 0) {
+        contextMessages.push({
+          role: "user",
+          content: [
+            { type: "text", text: message.content },
+            ...imageParts,
+          ],
+          timestamp: message.timestamp,
+        });
+        continue;
+      }
+    }
+
+    contextMessages.push({
       role: "user",
       content: message.content,
       timestamp: message.timestamp,
-    };
-  });
+    });
+  }
+
+  return contextMessages;
 }
 
-function buildCompactedMessages(
+async function buildCompactedMessages(
   messages: SessionMessageRecord[],
   settings: V2AppSettings,
-): { contextMessages: Message[]; checkpointText?: string } {
+  modelRef: string,
+): Promise<{ contextMessages: Message[]; checkpointText?: string }> {
   const totalTokens = messages.reduce(
     (sum, message) => sum + estimateTokens(message.content || "") + estimateTokens(message.thinkingContent || ""),
     0,
   );
   if (totalTokens <= settings.compactAtTokens) {
     return {
-      contextMessages: buildContextMessages(messages, settings.defaultModelRef),
+      contextMessages: await buildContextMessages(messages, modelRef),
     };
   }
 
@@ -181,7 +208,7 @@ function buildCompactedMessages(
         content: checkpointText,
         timestamp: Date.now(),
       },
-      ...buildContextMessages(recent, settings.defaultModelRef),
+      ...(await buildContextMessages(recent, modelRef)),
     ],
     checkpointText,
   };
@@ -204,7 +231,7 @@ async function runModelPhase(params: {
     throw new Error("Run not active.");
   }
 
-  const compacted = buildCompactedMessages(params.messages, params.settings);
+  const compacted = await buildCompactedMessages(params.messages, params.settings, params.modelRef);
   if (compacted.checkpointText) {
     await saveCheckpointRecord({
       sessionId: params.sessionId,
@@ -991,6 +1018,7 @@ export async function startWorkflowRun(params: {
   workflow: Workflow;
   modelRef: string;
   systemPrompt: string;
+  trigger?: "manual" | "scheduled" | "cron";
   onEvent: (event: RuntimeEvent) => void;
 }): Promise<{ runId: string; sessionId: string; variables: Record<string, unknown>; stepOutputs: Record<string, unknown> }> {
   const session = await createSessionRecord({
@@ -1017,10 +1045,17 @@ export async function startWorkflowRun(params: {
   const variables: Record<string, unknown> = { ...params.workflow.variables };
   const stepOutputs: Record<string, unknown> = {};
   const registeredTools = buildRegisteredTools(enabledMcpServerIds);
+  const workflowTrigger = params.trigger ?? "manual";
+  const automationPackage = params.workflow.packageId
+    ? await getAutomationPackage(params.workflow.packageId)
+    : null;
+  let currentStepId: string | undefined;
+  let lastOutputText = "";
 
   try {
     for (let index = 0; index < params.workflow.steps.length; index += 1) {
       const step = params.workflow.steps[index];
+      currentStepId = step.id;
       let success = true;
       let output: unknown = "";
       const artifacts: string[] = [];
@@ -1036,10 +1071,21 @@ export async function startWorkflowRun(params: {
         if (!tool) {
           throw new Error(`Workflow tool "${step.toolName}" not found.`);
         }
+        const resolvedArgs = resolveWorkflowToolArgs(step.toolArgs, variables);
+        const recipe =
+          step.toolName === "run_recipe" && typeof resolvedArgs.recipeId === "string"
+            ? await getWebRecipe(String(resolvedArgs.recipeId))
+            : null;
+        ensureAutomationToolCallAllowed({
+          automationPackage,
+          step,
+          resolvedArgs,
+          recipe,
+        });
         const result = await startDirectToolInvocation({
           sessionId: session.sessionId,
           tool,
-          args: resolveWorkflowToolArgs(step.toolArgs, variables),
+          args: resolvedArgs,
         });
         success = !result.isError;
         output = result.content;
@@ -1103,6 +1149,7 @@ export async function startWorkflowRun(params: {
       setNestedValue(variables, `step.${step.id}.status`, success ? "success" : "error");
       setNestedValue(variables, `step.${step.id}.output`, output);
       setNestedValue(variables, `step.${step.id}.artifacts`, artifacts);
+      lastOutputText = stringifyWorkflowValue(output);
       stepOutputs[step.id] = {
         status: success ? "success" : "error",
         output,
@@ -1135,15 +1182,52 @@ export async function startWorkflowRun(params: {
       phase: "complete",
       attempt: 0,
     });
+    await recordAutomationWorkflowRun({
+      workflow: params.workflow,
+      runId,
+      sessionId: session.sessionId,
+      trigger: workflowTrigger,
+      success: true,
+      lastOutput: lastOutputText,
+    }).catch(() => undefined);
 
     return { runId, sessionId: session.sessionId, variables, stepOutputs };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     await updateRunRecord(runId, {
       status: "failed",
       phase: "complete",
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage,
       attempt: 0,
     });
+    await saveCheckpointRecord({
+      sessionId: session.sessionId,
+      runId,
+      summary: currentStepId
+        ? `Workflow "${params.workflow.name}" falhou no passo "${currentStepId}".`
+        : `Workflow "${params.workflow.name}" falhou durante a execucao.`,
+      objective: params.workflow.description || params.workflow.name,
+      activePlan: currentStepId
+        ? `Investigar e recuperar o passo ${currentStepId}.`
+        : undefined,
+      decisions: [
+        errorMessage,
+        lastOutputText
+          ? `Ultimo output util: ${lastOutputText.slice(0, 1000)}`
+          : undefined,
+      ].filter((value): value is string => Boolean(value)),
+      relevantFiles: [],
+      pendingApprovals: [],
+    }).catch(() => undefined);
+    await recordAutomationWorkflowRun({
+      workflow: params.workflow,
+      runId,
+      sessionId: session.sessionId,
+      trigger: workflowTrigger,
+      success: false,
+      error: errorMessage,
+      lastOutput: lastOutputText,
+    }).catch(() => undefined);
     throw error;
   }
 }

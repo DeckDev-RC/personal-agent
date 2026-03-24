@@ -15,8 +15,16 @@ type AuthState = {
 
   checkAuth: (providerHint?: string) => Promise<void>;
   login: (provider?: string) => Promise<void>;
+  cancelLogin: () => Promise<void>;
   logout: (provider?: string) => Promise<void>;
   saveProviderAuth: (args: { provider: string; apiKey?: string; owner?: string; baseUrl?: string }) => Promise<void>;
+  testProviderConnection: (args: {
+    provider: string;
+    apiKey?: string;
+    baseUrl?: string;
+    modelRef?: string;
+    timeoutMs?: number;
+  }) => Promise<{ ok: boolean; status?: ProviderAuthStatus; message?: string }>;
   deleteProviderAuth: (provider: string) => Promise<void>;
   getProviderStatus: (provider?: string) => ProviderAuthStatus | undefined;
 };
@@ -77,6 +85,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  cancelLogin: async () => {
+    try {
+      await api().auth.cancelLogin();
+    } finally {
+      set({ loginBusy: false });
+    }
+  },
+
   logout: async (provider) => {
     const target = provider ?? get().activeProvider;
     if (target === "openai-codex") {
@@ -90,6 +106,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   saveProviderAuth: async (args) => {
     await api().auth.save(args);
     await get().checkAuth(args.provider);
+  },
+
+  testProviderConnection: async (args) => {
+    const result = await api().auth.test(args);
+    if (!args.apiKey?.trim() && !args.baseUrl?.trim()) {
+      await get().checkAuth(args.modelRef ?? args.provider);
+    }
+    return result;
   },
 
   deleteProviderAuth: async (provider) => {

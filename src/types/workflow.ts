@@ -32,6 +32,22 @@ export type WorkflowSchedule = {
   maxRetries?: number;
 };
 
+export type WorkflowExceptionPolicy = {
+  createTaskOnFailure?: boolean;
+  createReminderOnBlocked?: boolean;
+  notifyOnDegraded?: boolean;
+  checkpointOnFailure?: boolean;
+  maxRecoveryAttempts?: number;
+};
+
+export type WorkflowDocumentInput = {
+  id: string;
+  label: string;
+  mimeTypes?: string[];
+  required?: boolean;
+  templateId?: string;
+};
+
 export type Workflow = {
   id: string;
   name: string;
@@ -39,6 +55,12 @@ export type Workflow = {
   steps: WorkflowStep[];
   variables: Record<string, string>;
   schedule?: WorkflowSchedule;
+  packageId?: string;
+  connectionIds?: string[];
+  recipeIds?: string[];
+  approvalProfileId?: string;
+  exceptionPolicy?: WorkflowExceptionPolicy;
+  documentInputSchema?: WorkflowDocumentInput[];
   createdAt: number;
   updatedAt: number;
 };

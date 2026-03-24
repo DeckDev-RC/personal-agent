@@ -1,0 +1,11 @@
+{
+  "id": "plugin-notion-sync",
+  "name": "Notion Sync",
+  "version": "1.0.0",
+  "description": "Sync your Notion databases, pages and blocks bidirectionally.",
+  "author": "Codex Community",
+  "tags": [
+    "productivity",
+    "notion"
+  ]
+}

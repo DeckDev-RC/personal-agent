@@ -125,6 +125,12 @@ export async function loginAndStoreOpenAICodexOAuth(params?: {
       return answer;
     });
 
+  const requestRedirectInput = async (prompt: { message: string; placeholder?: string }) => {
+    const value = await promptForRedirect(prompt);
+    if (!value) throw new Error("Entrada vazia. Tente novamente.");
+    return value;
+  };
+
   const creds = await loginOpenAICodex({
     onAuth: async ({ url }: { url: string }) => {
       if (verbose) {
@@ -132,11 +138,11 @@ export async function loginAndStoreOpenAICodexOAuth(params?: {
       }
       await openUrl(url);
     },
-    onPrompt: async (prompt: { message: string; placeholder?: string }) => {
-      const value = await promptForRedirect(prompt);
-      if (!value) throw new Error("Entrada vazia. Tente novamente.");
-      return value;
-    },
+    onPrompt: requestRedirectInput,
+    onManualCodeInput: () =>
+      requestRedirectInput({
+        message: "Cole o redirect URL ou authorization code aqui, ou cancele para voltar e tentar de novo.",
+      }),
     onProgress: (message: string) => {
       ui?.onProgress?.(message);
       if (!verbose) return;

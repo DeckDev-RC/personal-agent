@@ -2,15 +2,9 @@ import React, { useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Bot, Wrench, ChevronDown, ChevronRight, Sparkles, Copy, RotateCcw, Pencil, X } from "lucide-react";
+import { Bot, Wrench, ChevronDown, ChevronRight, Sparkles, Copy, RotateCcw, Pencil, Volume2, Loader2, X } from "lucide-react";
+import type { AttachmentPayload } from "../../../../src/types/runtime.js";
 import Badge from "../shared/Badge";
-
-type Attachment = {
-  fileName: string;
-  mimeType: string;
-  bytesBase64: string;
-  byteSize: number;
-};
 
 type MessageBubbleProps = {
   role: "user" | "assistant" | "tool" | "system";
@@ -20,9 +14,11 @@ type MessageBubbleProps = {
   timestamp?: number;
   toolName?: string;
   phase?: string;
-  attachments?: Attachment[];
+  attachments?: AttachmentPayload[];
   onRetry?: () => void;
   onEdit?: (content: string) => void;
+  onSpeak?: (content: string) => void;
+  speaking?: boolean;
 };
 
 export default function MessageBubble({
@@ -35,6 +31,8 @@ export default function MessageBubble({
   attachments,
   onRetry,
   onEdit,
+  onSpeak,
+  speaking = false,
 }: MessageBubbleProps) {
   const { t } = useTranslation();
   const [showThinking, setShowThinking] = useState(false);
@@ -117,7 +115,7 @@ export default function MessageBubble({
       <div className={`group relative ${contentWidthClass} min-w-0 rounded-xl px-3 py-2 ${bubbleClasses} ${isUser ? "ml-auto" : ""}`}>
         {/* Hover action bar */}
         {showActions && (
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150 absolute -top-3 right-2 z-10 flex flex-row items-center gap-0.5 rounded-md bg-bg-primary/90 backdrop-blur border border-border px-0.5 py-0.5 shadow-sm">
+          <div className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150 absolute -top-3 right-2 z-10 flex flex-row items-center gap-0.5 rounded-md bg-bg-primary/90 backdrop-blur border border-border px-0.5 py-0.5 shadow-sm">
             {/* Copy button */}
             <div className="relative">
               <button
@@ -142,6 +140,17 @@ export default function MessageBubble({
                 className="h-6 w-6 flex items-center justify-center rounded text-text-secondary/70 hover:text-text-primary hover:bg-white/10 cursor-pointer transition-colors"
               >
                 <RotateCcw size={12} />
+              </button>
+            )}
+
+            {isAssistant && onSpeak && (
+              <button
+                onClick={() => onSpeak(content)}
+                aria-label="Speak"
+                className="h-6 w-6 flex items-center justify-center rounded text-text-secondary/70 hover:text-text-primary hover:bg-white/10 cursor-pointer transition-colors disabled:cursor-default disabled:opacity-50"
+                disabled={speaking}
+              >
+                {speaking ? <Loader2 size={12} className="animate-spin" /> : <Volume2 size={12} />}
               </button>
             )}
 

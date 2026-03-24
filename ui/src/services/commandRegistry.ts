@@ -11,24 +11,27 @@ import {
   FolderTree,
   GitBranch,
   Globe,
+  Inbox,
   Languages,
   LayoutDashboard,
   ListTodo,
   Mail,
   MessageSquare,
+  Package,
   Plug,
   ScrollText,
   Search,
   Settings,
   Sparkles,
+  Timer,
   Zap,
 } from "lucide-react";
 import type { RouteView } from "../router";
 import type { AgentConfig } from "../stores/agentStore";
 import type { ConversationSummary } from "../stores/chatStore";
+import type { AppSettings } from "../../../src/settings/appSettings.js";
 import type { ProjectContext } from "../../../src/types/projectContext.js";
 import type { Skill } from "../stores/skillStore";
-import type { V2AppSettings } from "../../../desktop/services/v2EntityStore.js";
 import type { Workflow } from "../stores/workflowStore";
 
 export type CommandPaletteCommand = {
@@ -49,7 +52,7 @@ type CommandRegistryParams = {
   workflows: Workflow[];
   contexts: ProjectContext[];
   conversations: ConversationSummary[];
-  settings: V2AppSettings;
+  settings: AppSettings;
   activeContextId: string;
   navigate: (view: RouteView, param?: string) => void;
   startNewChat: () => void;
@@ -102,6 +105,14 @@ function staticNavigationCommands(params: CommandRegistryParams): CommandPalette
       icon: BellRing,
       view: "notifications",
       keywords: ["reminders", "alerts"],
+    },
+    {
+      id: "nav-inbox",
+      label: t("commandPalette.openInbox", "Abrir Inbox"),
+      description: t("commandPalette.openInboxDesc", "Ver a caixa de entrada unificada dos MCPs conectados."),
+      icon: Inbox,
+      view: "inbox",
+      keywords: ["inbox", "messages", "gmail", "telegram", "discord"],
     },
     {
       id: "nav-workspace",
@@ -182,6 +193,22 @@ function staticNavigationCommands(params: CommandRegistryParams): CommandPalette
       icon: Mail,
       view: "communication" as RouteView,
       keywords: ["email", "drafts", "messages", "slack"],
+    },
+    {
+      id: "nav-automation",
+      label: t("commandPalette.openAutomation", "Abrir Automação"),
+      description: t("commandPalette.openAutomationDesc", "Gerenciar cron jobs e tarefas agendadas."),
+      icon: Timer,
+      view: "automation" as RouteView,
+      keywords: ["cron", "schedule", "timer", "recurring"],
+    },
+    {
+      id: "nav-plugins",
+      label: t("commandPalette.openPlugins", "Abrir Plugins"),
+      description: t("commandPalette.openPluginsDesc", "Instalar e gerenciar plugins e extensões."),
+      icon: Package,
+      view: "plugins" as RouteView,
+      keywords: ["extensions", "marketplace", "addons"],
     },
     {
       id: "nav-mcp",
