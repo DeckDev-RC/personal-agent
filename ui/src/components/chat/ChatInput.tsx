@@ -170,14 +170,12 @@ export default function ChatInput({
     const trimmed = value.trim();
     if ((!trimmed && attachments.length === 0) || disabled) return;
 
-    // Add to history if non-empty text
     if (trimmed) {
       setInputHistory((prev) => {
         const next = [trimmed, ...prev.filter((h) => h !== trimmed)];
         return next.slice(0, MAX_HISTORY);
       });
     }
-    // Reset history navigation
     setHistoryIndex(-1);
     draftRef.current = "";
 
@@ -215,7 +213,6 @@ export default function ChatInput({
         setShowSlashMenu(false);
         return;
       }
-      // Tab also selects
       if (e.key === "Tab") {
         e.preventDefault();
         executeSlashCommand(filteredCommands[slashCommandIndex].name);
@@ -223,7 +220,6 @@ export default function ChatInput({
       }
     }
 
-    // Dismiss slash menu on Escape even if no matches
     if (showSlashMenu && e.key === "Escape") {
       e.preventDefault();
       setShowSlashMenu(false);
@@ -238,7 +234,6 @@ export default function ChatInput({
       if ((cursorAtStart || isEmpty) && inputHistory.length > 0) {
         e.preventDefault();
         if (historyIndex === -1) {
-          // Save current draft
           draftRef.current = value;
         }
         const nextIndex = Math.min(historyIndex + 1, inputHistory.length - 1);
@@ -360,23 +355,25 @@ export default function ChatInput({
     });
   }, [agentSuggestion, t]);
 
+  const hasContent = value.trim().length > 0 || attachments.length > 0;
+
   return (
-    <div className="border-t border-border bg-bg-primary/90 px-5 py-2.5 backdrop-blur">
+    <div className="border-t border-border bg-bg-primary/90 px-5 py-3 backdrop-blur-xl">
       <div className="relative w-full">
         {agentSuggestion && !streaming && (
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-bg-secondary/75 px-3 py-2">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/15 bg-accent-subtle px-3.5 py-2.5">
             <div className="flex min-w-0 items-start gap-2">
-              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-accent-green/12 text-accent-green">
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white/45 text-accent">
                 <Bot size={13} />
               </div>
               <div className="min-w-0">
-                <div className="text-[11px] uppercase tracking-[0.12em] text-text-secondary/60">
+                <div className="text-[11px] font-medium tracking-tight text-accent">
                   {t("chat.agentSuggestion.label")}
                 </div>
-                <div className="truncate text-xs font-medium text-text-primary">
+                <div className="truncate text-[13px] font-medium text-text-primary">
                   {agentSuggestion.agentName}
                 </div>
-                <div className="text-[11px] text-text-secondary/70">
+                <div className="text-[11px] text-text-secondary/80">
                   {suggestionReason}
                 </div>
               </div>
@@ -386,14 +383,14 @@ export default function ChatInput({
               <button
                 type="button"
                 onClick={() => onDismissAgentSuggestion?.()}
-                className="rounded-lg px-2 py-1 text-[11px] text-text-secondary hover:bg-white/5 hover:text-text-primary transition-colors cursor-pointer"
+                className="cursor-pointer rounded-lg px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-white/40 hover:text-text-primary"
               >
                 {t("chat.agentSuggestion.dismiss")}
               </button>
               <button
                 type="button"
                 onClick={() => onApplyAgentSuggestion?.(agentSuggestion.agentId)}
-                className="rounded-lg bg-accent-green px-2.5 py-1 text-[11px] font-medium text-black hover:bg-[#6df29a] transition-colors cursor-pointer"
+                className="cursor-pointer rounded-lg bg-accent px-2.5 py-1 text-[11px] font-medium text-[#0a0a0a] transition-colors hover:bg-accent-hover"
               >
                 {t("chat.agentSuggestion.use")}
               </button>
@@ -405,7 +402,7 @@ export default function ChatInput({
         {showSlashMenu && filteredCommands.length > 0 && (
           <div
             ref={slashMenuRef}
-            className="absolute bottom-full left-0 mb-2 w-72 max-h-64 overflow-y-auto rounded-lg border border-border bg-bg-secondary shadow-lg z-50"
+            className="absolute bottom-full left-0 z-50 mb-2 max-h-64 w-72 overflow-y-auto rounded-2xl border border-border bg-bg-secondary/92 shadow-xl backdrop-blur-lg"
           >
             {filteredCommands.map((cmd, idx) => (
               <button
@@ -414,11 +411,11 @@ export default function ChatInput({
                 data-slash-item
                 onClick={() => executeSlashCommand(cmd.name)}
                 onMouseEnter={() => setSlashCommandIndex(idx)}
-                className={`flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors cursor-pointer ${
-                  idx === slashCommandIndex ? "bg-white/10 text-text-primary" : "text-text-secondary hover:bg-white/10"
+                className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition-colors ${
+                  idx === slashCommandIndex ? "bg-accent-subtle text-accent" : "text-text-secondary hover:bg-accent-muted hover:text-text-primary"
                 }`}
               >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-text-secondary">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-current opacity-80">
                   {cmd.icon}
                 </span>
                 <span className="flex flex-col min-w-0">
@@ -433,13 +430,10 @@ export default function ChatInput({
         )}
 
         <div
-          className="flex items-end gap-2.5 rounded-xl border border-border bg-bg-secondary/90 px-3 py-2"
+          className="flex items-end gap-2.5 rounded-2xl border border-transparent bg-surface-raised px-3 py-2 transition-all duration-200 focus-within:border-accent/30 focus-within:shadow-[0_0_0_1px_var(--accent-subtle),0_2px_8px_rgba(0,0,0,0.3)]"
           onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent-green/10 text-accent-green text-sm">
-            &gt;
-          </div>
         <input
           ref={fileInputRef}
           type="file"
@@ -451,7 +445,7 @@ export default function ChatInput({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary transition-colors cursor-pointer"
+          className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-transparent text-text-secondary transition-colors hover:bg-bg-primary/55 hover:text-text-primary"
           title={t("chat.attachFile")}
           aria-label={t("chat.attachFile")}
         >
@@ -461,10 +455,10 @@ export default function ChatInput({
           <button
             type="button"
             onClick={toggleVoice}
-            className={`shrink-0 flex h-8 w-8 items-center justify-center rounded-lg transition-colors cursor-pointer ${
+            className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-colors ${
               listening
-                ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                : "bg-white/5 text-text-secondary hover:bg-white/10 hover:text-text-primary"
+                ? "bg-[var(--danger-subtle)] text-[var(--danger)] hover:brightness-110"
+                : "bg-transparent text-text-secondary hover:bg-bg-primary/55 hover:text-text-primary"
             }`}
             title={t("chat.voiceInput")}
             aria-label={t("chat.voiceInput")}
@@ -486,7 +480,7 @@ export default function ChatInput({
         {streaming ? (
           <button
             onClick={onAbort}
-            className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg bg-accent-orange/15 text-accent-orange hover:bg-accent-orange/25 transition-colors cursor-pointer"
+            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg bg-[var(--danger-subtle)] text-[var(--danger)] transition-colors hover:brightness-125"
             title={t("chat.abort")}
           >
             <Square size={14} />
@@ -494,8 +488,12 @@ export default function ChatInput({
           ) : (
           <button
             onClick={handleSubmit}
-            disabled={(!value.trim() && attachments.length === 0) || disabled}
-            className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg bg-accent-green text-black hover:bg-[#6df29a] transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-default disabled:bg-accent-green/30"
+            disabled={!hasContent || disabled}
+            className={`flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg transition-all duration-200 ${
+              hasContent && !disabled
+                ? "bg-accent text-[#0a0a0a] shadow-[0_0_12px_var(--accent-subtle)] hover:bg-accent-hover"
+                : "opacity-30 bg-transparent border border-[var(--muted)]/20 text-[var(--muted)] disabled:cursor-default"
+            }`}
             title={t("chat.send")}
           >
             <ArrowUp size={14} />
@@ -507,7 +505,7 @@ export default function ChatInput({
             {attachments.map((attachment, index) => (
               <div
                 key={`${attachment.fileName}-${index}`}
-                className="flex items-center gap-2 rounded-lg border border-border bg-bg-secondary px-2 py-1 text-[11px] text-text-secondary"
+                className="flex items-center gap-2 rounded-lg border border-border bg-surface-raised px-2 py-1 text-[11px] text-text-secondary"
               >
                 <span className="truncate max-w-[180px]">{attachment.fileName}</span>
                 <button

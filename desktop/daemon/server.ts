@@ -222,6 +222,15 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+function sendInternalError(res: ServerResponse, error: unknown): void {
+  const normalized = error instanceof Error ? error : new Error(String(error));
+  if (res.headersSent || res.writableEnded) {
+    res.destroy();
+    return;
+  }
+  sendJson(res, 500, { ok: false, error: normalized.message || "Internal daemon error." });
+}
+
 function sendNotFound(res: ServerResponse): void {
   sendJson(res, 404, { ok: false, error: "Not found" });
 }
@@ -280,7 +289,14 @@ export class CodexAgentDaemon {
   constructor(token: string) {
     this.token = token;
     this.server = createServer((req, res) => {
-      void this.handleRequest(req, res);
+      void this.handleRequest(req, res).catch((error) => {
+        const normalized = error instanceof Error ? error : new Error(String(error));
+        console.error(
+          `[daemon] ${req.method ?? "GET"} ${req.url ?? "/"} failed`,
+          normalized,
+        );
+        sendInternalError(res, normalized);
+      });
     });
   }
 

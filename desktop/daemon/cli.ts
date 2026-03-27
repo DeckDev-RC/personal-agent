@@ -19,6 +19,16 @@ const daemon = new CodexAgentDaemon(token);
 const actualPort = await daemon.listen(port);
 process.stdout.write(`${JSON.stringify({ type: "ready", port: actualPort })}\n`);
 
+process.on("uncaughtException", (error) => {
+  console.error("[daemon-cli] Uncaught exception", error);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[daemon-cli] Unhandled rejection", reason);
+  process.exit(1);
+});
+
 process.on("SIGINT", () => {
   void daemon.close().finally(() => process.exit(0));
 });

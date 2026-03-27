@@ -5,7 +5,7 @@ import type { AttachmentRecord } from "../../src/types/runtime.js";
 import { resolveProviderCredential } from "./providerAuthStore.js";
 import { ensureDir } from "./v2Fs.js";
 import { artifactsDir } from "./v2Paths.js";
-import { saveArtifactRecord } from "./v2SessionStore.js";
+import { saveRunArtifactRecord } from "./v2SessionStore.js";
 
 export type GeneratedImageSize = "1024x1024" | "1024x1536" | "1536x1024" | "auto";
 export type GeneratedImageQuality = "low" | "medium" | "high" | "auto";
@@ -168,26 +168,28 @@ export async function generateImages(params: GenerateImageParams): Promise<Gener
     const absolutePath = path.join(runArtifactsDir, `${artifactId}-${fileName}`);
     await fs.writeFile(absolutePath, buffer);
 
-    await saveArtifactRecord({
-      artifactId,
+    await saveRunArtifactRecord({
       sessionId: params.sessionId,
       runId: params.runId,
-      type: "attachment",
-      label: fileName,
-      filePath: absolutePath,
-      metadata: {
-        fileName,
-        mimeType,
-        byteSize: buffer.byteLength,
-        extractedTextAvailable: false,
-        generated: true,
-        prompt,
-        revisedPrompt: item.revised_prompt,
-        model,
-        size,
-        quality,
-        background,
-        outputFormat,
+      artifact: {
+        artifactId,
+        type: "attachment",
+        label: fileName,
+        filePath: absolutePath,
+        metadata: {
+          fileName,
+          mimeType,
+          byteSize: buffer.byteLength,
+          extractedTextAvailable: false,
+          generated: true,
+          prompt,
+          revisedPrompt: item.revised_prompt,
+          model,
+          size,
+          quality,
+          background,
+          outputFormat,
+        },
       },
     });
 

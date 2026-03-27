@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildProactiveSuggestions } from "../../../desktop/services/proactiveEngine.js";
+import { buildProactiveSuggestions } from "../services/proactiveEngine.js";
 
 const baseSettings = {
   provider: "openai-codex",

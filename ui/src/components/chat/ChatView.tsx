@@ -32,6 +32,7 @@ import EmptyState from "../shared/EmptyState";
 import MessageList from "./MessageList";
 import SuggestionChips from "./SuggestionChips";
 import type { ProactiveSuggestion } from "../../../../src/types/proactive.js";
+import type { AttachmentRecord } from "../../../../src/types/runtime.js";
 import { resolveAgentModel } from "../../../../src/settings/resolveAgentModel.js";
 import {
   getConversationDisplayTitle,
@@ -631,18 +632,21 @@ export default function ChatView({ sessionId }: ChatViewProps) {
         };
       }
 
-      const uploadedAttachments = current.id.startsWith("draft-")
-        ? []
-        : await Promise.all(
-            attachments.map((attachment) =>
-              api().attachments.upload({
-                sessionId: current.id,
-                fileName: attachment.fileName,
-                mimeType: attachment.mimeType,
-                bytesBase64: attachment.bytesBase64,
-              }),
-            ),
+      const uploadedAttachments: AttachmentRecord[] = [];
+      if (!current.id.startsWith("draft-")) {
+        // Upload attachments one-by-one to avoid spiking daemon memory/CPU with
+        // multiple PDF extraction jobs at the same time.
+        for (const attachment of attachments) {
+          uploadedAttachments.push(
+            await api().attachments.upload({
+              sessionId: current.id,
+              fileName: attachment.fileName,
+              mimeType: attachment.mimeType,
+              bytesBase64: attachment.bytesBase64,
+            }),
           );
+        }
+      }
 
       addUserMessage(
         message,

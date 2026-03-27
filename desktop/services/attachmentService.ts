@@ -5,27 +5,39 @@ import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { AttachmentPayload, AttachmentRecord } from "../../src/types/runtime.js";
 import { attachmentsDir } from "./v2Paths.js";
 import { ensureDir } from "./v2Fs.js";
-import { getArtifactRecord, saveArtifactRecord, saveMemorySourceContent } from "./v2SessionStore.js";
+import { getArtifactRecord, saveMemorySourceContent, saveSessionArtifactRecord } from "./v2SessionStore.js";
 
 function sanitizeFileName(fileName: string): string {
   return fileName.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").slice(0, 180) || "attachment";
 }
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  const doc = await getDocument({ data: new Uint8Array(buffer) }).promise;
-  const pages: string[] = [];
-  for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
-    const page = await doc.getPage(pageNumber);
-    const content = await page.getTextContent();
-    const pageText = content.items
-      .map((item) => ("str" in item ? item.str : ""))
-      .join(" ")
-      .trim();
-    if (pageText) {
-      pages.push(pageText);
+  const loadingTask = getDocument({ data: new Uint8Array(buffer) });
+  const doc = await loadingTask.promise;
+
+  try {
+    const pages: string[] = [];
+    for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber += 1) {
+      const page = await doc.getPage(pageNumber);
+
+      try {
+        const content = await page.getTextContent();
+        const pageText = content.items
+          .map((item) => ("str" in item ? item.str : ""))
+          .join(" ")
+          .trim();
+        if (pageText) {
+          pages.push(pageText);
+        }
+      } finally {
+        page.cleanup();
+      }
     }
+
+    return pages.join("\n\n");
+  } finally {
+    await loadingTask.destroy();
   }
-  return pages.join("\n\n");
 }
 
 async function extractAttachmentText(params: {
@@ -57,51 +69,65 @@ export async function saveAttachment(params: {
   const filePath = path.join(attachmentsDir(params.sessionId), `${artifactId}-${safeName}`);
   await fs.writeFile(filePath, buffer);
 
-  const extractedText = await extractAttachmentText({
-    mimeType: params.mimeType,
-    buffer,
-  });
-
-  await saveArtifactRecord({
-    artifactId,
-    sessionId: params.sessionId,
-    runId: "attachment",
-    type: "attachment",
-    label: params.fileName,
-    filePath,
-    metadata: {
-      fileName: params.fileName,
+  let extractedText: string | undefined;
+  try {
+    extractedText = await extractAttachmentText({
       mimeType: params.mimeType,
-      byteSize: buffer.byteLength,
-      extractedTextAvailable: Boolean(extractedText?.trim()),
+      buffer,
+    });
+  } catch (error) {
+    const normalized = error instanceof Error ? error : new Error(String(error));
+    console.warn(
+      `[attachments] Text extraction failed for ${params.fileName}: ${normalized.message}`,
+    );
+  }
+
+  await saveSessionArtifactRecord({
+    sessionId: params.sessionId,
+    artifact: {
+      artifactId,
+      type: "attachment",
+      label: params.fileName,
+      filePath,
+      metadata: {
+        fileName: params.fileName,
+        mimeType: params.mimeType,
+        byteSize: buffer.byteLength,
+        extractedTextAvailable: Boolean(extractedText?.trim()),
+      },
     },
   });
 
   if (extractedText?.trim()) {
-    await saveArtifactRecord({
-      artifactId: randomUUID(),
-      sessionId: params.sessionId,
-      runId: "attachment",
-      type: "preview",
-      label: `${params.fileName} preview`,
-      contentText: extractedText.slice(0, 12000),
-      metadata: {
-        attachmentArtifactId: artifactId,
-        fileName: params.fileName,
-      },
-    });
-  }
+    try {
+      await saveSessionArtifactRecord({
+        sessionId: params.sessionId,
+        artifact: {
+          artifactId: randomUUID(),
+          type: "preview",
+          label: `${params.fileName} preview`,
+          contentText: extractedText.slice(0, 12000),
+          metadata: {
+            attachmentArtifactId: artifactId,
+            fileName: params.fileName,
+          },
+        },
+      });
 
-  if (extractedText?.trim()) {
-    await saveMemorySourceContent({
-      sourceId: `attachment:${artifactId}`,
-      sourceType: "attachment_text",
-      sessionId: params.sessionId,
-      runId: "attachment",
-      title: params.fileName,
-      path: filePath,
-      content: extractedText,
-    });
+      await saveMemorySourceContent({
+        sourceId: `attachment:${artifactId}`,
+        sourceType: "attachment_text",
+        sessionId: params.sessionId,
+        title: params.fileName,
+        path: filePath,
+        content: extractedText,
+      });
+    } catch (error) {
+      const normalized = error instanceof Error ? error : new Error(String(error));
+      console.warn(
+        `[attachments] Attachment indexing failed for ${params.fileName}: ${normalized.message}`,
+      );
+    }
   }
 
   return {

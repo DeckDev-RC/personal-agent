@@ -15,8 +15,8 @@ import {
   createSessionRecord,
   getSessionRecord,
   resolveApprovalRecord,
-  saveArtifactRecord,
   saveMemorySourceContent,
+  saveRunArtifactRecord,
   saveMessageRecord,
   saveToolHistoryRecord,
   updateRunRecord,
@@ -160,10 +160,10 @@ async function createToolArtifact(params: {
   artifact: Omit<ArtifactRecord, "sessionId" | "runId" | "createdAt">;
   onEvent?: (event: ToolExecutionEvent) => void;
 }): Promise<string> {
-  const artifact = await saveArtifactRecord({
-    ...params.artifact,
+  const artifact = await saveRunArtifactRecord({
     sessionId: params.sessionId,
     runId: params.runId,
+    artifact: params.artifact,
   });
   params.onEvent?.({
     type: "artifact",

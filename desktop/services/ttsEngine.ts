@@ -5,7 +5,7 @@ import type { AttachmentRecord } from "../../src/types/runtime.js";
 import { resolveProviderCredential } from "./providerAuthStore.js";
 import { ensureDir } from "./v2Fs.js";
 import { artifactsDir } from "./v2Paths.js";
-import { saveArtifactRecord } from "./v2SessionStore.js";
+import { saveRunArtifactRecord } from "./v2SessionStore.js";
 
 export type TextToSpeechProvider = "openai";
 export type TextToSpeechFormat = "mp3" | "wav";
@@ -182,27 +182,29 @@ export async function synthesizeSpeech(params: SynthesizeSpeechParams): Promise<
   const absolutePath = path.join(runArtifactsDir, `${artifactId}-${fileName}`);
   await fs.writeFile(absolutePath, generated.buffer);
 
-  await saveArtifactRecord({
-    artifactId,
+  await saveRunArtifactRecord({
     sessionId: params.sessionId,
     runId: params.runId,
-    type: "attachment",
-    label: fileName,
-    filePath: absolutePath,
-    metadata: {
-      fileName,
-      mimeType: generated.mimeType,
-      byteSize: generated.buffer.byteLength,
-      extractedTextAvailable: false,
-      generated: true,
-      provider: generated.provider,
-      model: generated.model,
-      voice: generated.voice,
-      format: generated.format,
-      language: params.language?.trim() || undefined,
-      instructions: generated.instructions,
-      speed: generated.speed,
-      sourceTextPreview: text.slice(0, 500),
+    artifact: {
+      artifactId,
+      type: "attachment",
+      label: fileName,
+      filePath: absolutePath,
+      metadata: {
+        fileName,
+        mimeType: generated.mimeType,
+        byteSize: generated.buffer.byteLength,
+        extractedTextAvailable: false,
+        generated: true,
+        provider: generated.provider,
+        model: generated.model,
+        voice: generated.voice,
+        format: generated.format,
+        language: params.language?.trim() || undefined,
+        instructions: generated.instructions,
+        speed: generated.speed,
+        sourceTextPreview: text.slice(0, 500),
+      },
     },
   });
 

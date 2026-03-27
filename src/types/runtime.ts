@@ -442,7 +442,7 @@ export type ContextCheckpoint = {
 export type ArtifactRecord = {
   artifactId: string;
   sessionId: string;
-  runId: string;
+  runId?: string;
   type:
     | "diff"
     | "patch"

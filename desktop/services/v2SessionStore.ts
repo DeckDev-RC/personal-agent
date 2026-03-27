@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import type {
   ArtifactRecord,
   BrowserSessionRecord,
@@ -19,8 +20,10 @@ import type {
 import { normalizeModelRef } from "./providers/index.js";
 import { appendJsonl, ensureDir, writeTextFile } from "./v2Fs.js";
 import { ensureV2Db } from "./v2Db.js";
-import { artifactsDir, browserProfileDir, sessionDir, transcriptPath } from "./v2Paths.js";
+import { artifactsDir, browserProfileDir, sessionArtifactsDir, sessionDir, transcriptPath } from "./v2Paths.js";
 import { chunkMemoryContent, estimateTokenCount, hashMemoryContent } from "./memoryChunks.js";
+
+type ArtifactDraft = Omit<ArtifactRecord, "sessionId" | "runId" | "createdAt">;
 
 function parseJson<T>(value: unknown, fallback: T): T {
   if (typeof value !== "string" || !value.trim()) {
@@ -117,7 +120,7 @@ function rowToArtifact(row: Record<string, unknown>): ArtifactRecord {
   return {
     artifactId: String(row.artifact_id),
     sessionId: String(row.session_id),
-    runId: String(row.run_id),
+    runId: typeof row.run_id === "string" ? row.run_id : undefined,
     type: String(row.type) as ArtifactRecord["type"],
     label: String(row.label),
     filePath: typeof row.file_path === "string" ? row.file_path : undefined,
@@ -727,24 +730,36 @@ export async function listApprovalRecords(sessionId?: string): Promise<ToolAppro
   return rows.map(rowToApproval);
 }
 
-export async function saveArtifactRecord(
-  artifact: Omit<ArtifactRecord, "createdAt">,
-): Promise<ArtifactRecord> {
+function resolveArtifactBaseDir(sessionId: string, runId?: string): string {
+  return runId ? artifactsDir(sessionId, runId) : sessionArtifactsDir(sessionId);
+}
+
+async function persistArtifactRecord(params: {
+  sessionId: string;
+  runId?: string;
+  artifact: ArtifactDraft;
+}): Promise<ArtifactRecord> {
   const db = await ensureV2Db();
   const createdAt = Date.now();
-  const filePath =
-    artifact.filePath && artifact.filePath.trim()
-      ? artifact.filePath
-      : artifact.contentText
-        ? `${artifact.type}-${artifact.artifactId}.txt`
+  const requestedFilePath =
+    params.artifact.filePath && params.artifact.filePath.trim()
+      ? params.artifact.filePath
+      : params.artifact.contentText
+        ? `${params.artifact.type}-${params.artifact.artifactId}.txt`
         : undefined;
+  const filePath =
+    requestedFilePath && !path.isAbsolute(requestedFilePath)
+      ? path.join(resolveArtifactBaseDir(params.sessionId, params.runId), requestedFilePath).replace(/\\/g, "/")
+      : requestedFilePath;
   const absoluteFilePath =
-    filePath && !filePath.includes(":") && !filePath.startsWith("\\")
-      ? `${artifactsDir(artifact.sessionId, artifact.runId)}\\${filePath}`.replace(/\\/g, "/")
+    filePath && !path.isAbsolute(filePath)
+      ? path.join(resolveArtifactBaseDir(params.sessionId, params.runId), filePath).replace(/\\/g, "/")
       : filePath;
 
   const record: ArtifactRecord = {
-    ...artifact,
+    ...params.artifact,
+    sessionId: params.sessionId,
+    runId: params.runId,
     filePath: absoluteFilePath,
     createdAt,
   };
@@ -758,7 +773,7 @@ export async function saveArtifactRecord(
   ).run(
     record.artifactId,
     record.sessionId,
-    record.runId,
+    record.runId ?? null,
     record.type,
     record.label,
     record.filePath ?? null,
@@ -768,11 +783,26 @@ export async function saveArtifactRecord(
   );
 
   if (record.filePath && record.contentText) {
-    await ensureDir(artifactsDir(record.sessionId, record.runId));
+    await ensureDir(resolveArtifactBaseDir(record.sessionId, record.runId));
     await writeTextFile(record.filePath, record.contentText);
   }
   await appendJsonl(transcriptPath(record.sessionId), record);
   return record;
+}
+
+export async function saveRunArtifactRecord(params: {
+  sessionId: string;
+  runId: string;
+  artifact: ArtifactDraft;
+}): Promise<ArtifactRecord> {
+  return await persistArtifactRecord(params);
+}
+
+export async function saveSessionArtifactRecord(params: {
+  sessionId: string;
+  artifact: ArtifactDraft;
+}): Promise<ArtifactRecord> {
+  return await persistArtifactRecord(params);
 }
 
 export async function listArtifactRecords(params?: {
@@ -806,15 +836,30 @@ export async function saveCheckpointRecord(
     checkpointId: randomUUID(),
     createdAt: Date.now(),
   };
-  await saveArtifactRecord({
-    artifactId: record.checkpointId,
-    sessionId: record.sessionId,
-    runId: record.runId ?? "session",
-    type: "checkpoint",
-    label: "Context checkpoint",
-    contentText: JSON.stringify(record, null, 2),
-    metadata: record,
-  });
+  if (record.runId) {
+    await saveRunArtifactRecord({
+      sessionId: record.sessionId,
+      runId: record.runId,
+      artifact: {
+        artifactId: record.checkpointId,
+        type: "checkpoint",
+        label: "Context checkpoint",
+        contentText: JSON.stringify(record, null, 2),
+        metadata: record,
+      },
+    });
+  } else {
+    await saveSessionArtifactRecord({
+      sessionId: record.sessionId,
+      artifact: {
+        artifactId: record.checkpointId,
+        type: "checkpoint",
+        label: "Context checkpoint",
+        contentText: JSON.stringify(record, null, 2),
+        metadata: record,
+      },
+    });
+  }
   await appendJsonl(transcriptPath(record.sessionId), record);
   return record;
 }

@@ -21,6 +21,10 @@ export function artifactsDir(sessionId: string, runId: string): string {
   return path.join(sessionDir(sessionId), "artifacts", runId);
 }
 
+export function sessionArtifactsDir(sessionId: string): string {
+  return path.join(sessionDir(sessionId), "artifacts", "session-assets");
+}
+
 export function browserProfileDir(sessionId: string): string {
   return path.join(sessionDir(sessionId), "browser-profile");
 }

@@ -12,6 +12,7 @@ import { ensureDir, readJsonFile, writeTextFile } from "./v2Fs.js";
 let database: DatabaseSync | null = null;
 let initialized = false;
 let initPromise: Promise<void> | null = null;
+const CURRENT_SCHEMA_VERSION = 3;
 
 function getDbInternal(): DatabaseSync {
   if (!database) {
@@ -134,7 +135,7 @@ function initSchema(db: DatabaseSync) {
     CREATE TABLE IF NOT EXISTS artifacts (
       artifact_id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
-      run_id TEXT NOT NULL,
+      run_id TEXT,
       type TEXT NOT NULL,
       label TEXT NOT NULL,
       file_path TEXT,
@@ -358,6 +359,18 @@ function initSchema(db: DatabaseSync) {
   `);
 }
 
+function getSchemaVersion(db: DatabaseSync): number {
+  const row = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as
+    | Record<string, unknown>
+    | undefined;
+  const value = Number(row?.value ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function setSchemaVersion(db: DatabaseSync, version: number): void {
+  db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)").run(String(version));
+}
+
 function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string) {
   const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<Record<string, unknown>>;
   if (rows.some((row) => String(row.name) === column)) {
@@ -368,6 +381,42 @@ function ensureColumn(db: DatabaseSync, table: string, column: string, definitio
 
 function ensureSchemaUpgrades(db: DatabaseSync) {
   ensureColumn(db, "sessions", "project_context_id", "TEXT");
+}
+
+function ensureArtifactsAllowNullRunId(db: DatabaseSync): void {
+  const columns = db.prepare("PRAGMA table_info(artifacts)").all() as Array<Record<string, unknown>>;
+  const runIdColumn = columns.find((column) => String(column.name) === "run_id");
+
+  if (!runIdColumn || Number(runIdColumn.notnull ?? 0) === 0) {
+    return;
+  }
+
+  db.exec(`
+    ALTER TABLE artifacts RENAME TO artifacts_old;
+
+    CREATE TABLE artifacts (
+      artifact_id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      run_id TEXT,
+      type TEXT NOT NULL,
+      label TEXT NOT NULL,
+      file_path TEXT,
+      content_text TEXT,
+      metadata_json TEXT,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE,
+      FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
+    );
+
+    INSERT INTO artifacts (
+      artifact_id, session_id, run_id, type, label, file_path, content_text, metadata_json, created_at
+    )
+    SELECT
+      artifact_id, session_id, run_id, type, label, file_path, content_text, metadata_json, created_at
+    FROM artifacts_old;
+
+    DROP TABLE artifacts_old;
+  `);
 }
 
 async function migrateEntityCollection<T extends { id: string; updatedAt?: number }>(
@@ -473,19 +522,27 @@ async function migrateConversations() {
 
 async function runMigration() {
   const db = getDbInternal();
-  const row = db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as
-    | Record<string, unknown>
-    | undefined;
-  if (String(row?.value ?? "") === "2") {
-    return;
+  let version = getSchemaVersion(db);
+
+  if (version < 2) {
+    await migrateEntityCollection<AgentConfig>("agents", "agents");
+    await migrateEntityCollection<Skill>("skills", "skills");
+    await migrateEntityCollection<Workflow>("workflows", "workflows");
+    await migrateEntityCollection<McpServerConfig>("mcp_servers", "mcp-servers");
+    await migrateConversations();
+    version = 2;
+    setSchemaVersion(db, version);
   }
 
-  await migrateEntityCollection<AgentConfig>("agents", "agents");
-  await migrateEntityCollection<Skill>("skills", "skills");
-  await migrateEntityCollection<Workflow>("workflows", "workflows");
-  await migrateEntityCollection<McpServerConfig>("mcp_servers", "mcp-servers");
-  await migrateConversations();
-  db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '2')").run();
+  if (version < 3) {
+    ensureArtifactsAllowNullRunId(db);
+    version = 3;
+    setSchemaVersion(db, version);
+  }
+
+  if (version < CURRENT_SCHEMA_VERSION) {
+    setSchemaVersion(db, CURRENT_SCHEMA_VERSION);
+  }
 }
 
 export async function ensureV2Db(): Promise<DatabaseSync> {
@@ -518,4 +575,18 @@ export async function ensureV2Db(): Promise<DatabaseSync> {
 
 export function getV2Db(): DatabaseSync {
   return getDbInternal();
+}
+
+export function resetV2DbForTests(): void {
+  try {
+    if (database && "close" in database && typeof database.close === "function") {
+      database.close();
+    }
+  } catch {
+    // Best-effort cleanup for tests.
+  }
+
+  database = null;
+  initialized = false;
+  initPromise = null;
 }

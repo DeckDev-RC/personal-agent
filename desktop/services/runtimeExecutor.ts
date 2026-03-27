@@ -14,10 +14,10 @@ import {
   getSessionRecord,
   listMessagesForSession,
   patchSessionRecord,
-  saveArtifactRecord,
   saveCheckpointRecord,
   saveMemorySourceContent,
   saveMessageRecord,
+  saveRunArtifactRecord,
   searchMemoryRecords,
   updateRunRecord,
 } from "./v2SessionStore.js";
@@ -450,19 +450,21 @@ async function maybePersistCoworkOutput(params: {
     return;
   }
 
-  await saveArtifactRecord({
-    artifactId: randomUUID(),
+  await saveRunArtifactRecord({
     sessionId: params.sessionId,
     runId: params.runId,
-    type: "file",
-    label: `Cowork output: ${saved.title}`,
-    filePath: saved.absolutePath,
-    metadata: {
-      relativePath: saved.relativePath,
-      category: saved.category,
-      skillId: saved.skillId,
-      skillName: saved.skillName,
-      projectContextId: saved.projectContextId,
+    artifact: {
+      artifactId: randomUUID(),
+      type: "file",
+      label: `Cowork output: ${saved.title}`,
+      filePath: saved.absolutePath,
+      metadata: {
+        relativePath: saved.relativePath,
+        category: saved.category,
+        skillId: saved.skillId,
+        skillName: saved.skillName,
+        projectContextId: saved.projectContextId,
+      },
     },
   });
 
@@ -642,14 +644,16 @@ async function executePromptRun(params: {
       modelRef: policy.modelRef,
       content: plan.text,
     });
-    await saveArtifactRecord({
-      artifactId: randomUUID(),
+    await saveRunArtifactRecord({
       sessionId: params.sessionId,
       runId: run.runId,
-      type: "plan",
-      label: "Execution plan",
-      contentText: plan.text,
-      metadata: { taskType: params.taskType },
+      artifact: {
+        artifactId: randomUUID(),
+        type: "plan",
+        label: "Execution plan",
+        contentText: plan.text,
+        metadata: { taskType: params.taskType },
+      },
     });
 
     let latestExecutionText = "";
@@ -715,14 +719,16 @@ async function executePromptRun(params: {
         reviewText,
         attempt,
       });
-      await saveArtifactRecord({
-        artifactId: randomUUID(),
+      await saveRunArtifactRecord({
         sessionId: params.sessionId,
         runId: run.runId,
-        type: "review",
-        label: `Review attempt ${attempt + 1}`,
-        contentText: reviewText,
-        metadata: { attempt },
+        artifact: {
+          artifactId: randomUUID(),
+          type: "review",
+          label: `Review attempt ${attempt + 1}`,
+          contentText: reviewText,
+          metadata: { attempt },
+        },
       });
 
       success = /^REVIEW_STATUS:\s*success\b/im.test(reviewText);
@@ -1168,14 +1174,16 @@ export async function startWorkflowRun(params: {
       }
     }
 
-    await saveArtifactRecord({
-      artifactId: randomUUID(),
+    await saveRunArtifactRecord({
       sessionId: session.sessionId,
       runId,
-      type: "report",
-      label: `Workflow output: ${params.workflow.name}`,
-      contentText: JSON.stringify({ variables, stepOutputs }, null, 2),
-      metadata: { workflowId: params.workflow.id },
+      artifact: {
+        artifactId: randomUUID(),
+        type: "report",
+        label: `Workflow output: ${params.workflow.name}`,
+        contentText: JSON.stringify({ variables, stepOutputs }, null, 2),
+        metadata: { workflowId: params.workflow.id },
+      },
     });
     await updateRunRecord(runId, {
       status: "completed",

@@ -10,6 +10,14 @@
   --color-accent-green: var(--ok);
   --color-accent-blue: var(--info);
   --color-accent-orange: var(--warn);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-accent-muted: var(--accent-muted);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-inset: var(--surface-inset);
+  --color-indicator-tool: var(--indicator-tool);
+  --color-indicator-user: var(--indicator-user);
 }
 
 /* ---------------------------------------------------------------------------
@@ -90,6 +98,20 @@
   /* Typography */
   --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", monospace;
+
+  /* Accent – warm apricot (identidade visual) */
+  --accent: #e8a87c;
+  --accent-hover: #f0be98;
+  --accent-subtle: rgba(232, 168, 124, 0.10);
+  --accent-muted: rgba(232, 168, 124, 0.06);
+
+  /* Surfaces com leve calor */
+  --surface-raised: #161618;
+  --surface-inset: #0e0e10;
+
+  /* Indicadores de role */
+  --indicator-tool: #a0a0b0;
+  --indicator-user: #c4c4cc;
 }
 
 /* ---------------------------------------------------------------------------
@@ -152,6 +174,16 @@
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.06);
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+
+  /* Accent – light theme */
+  --accent: #c4793e;
+  --accent-hover: #a86530;
+  --accent-subtle: rgba(196, 121, 62, 0.10);
+  --accent-muted: rgba(196, 121, 62, 0.06);
+  --surface-raised: #f5f5f6;
+  --surface-inset: #ebebed;
+  --indicator-tool: #71717a;
+  --indicator-user: #52525b;
 }
 
 /* ---------------------------------------------------------------------------
@@ -196,6 +228,46 @@
   100% {
     background-position: 200% 0;
   }
+}
+
+@keyframes message-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 80%, 100% {
+    opacity: 0.3;
+    transform: scale(0.85);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 /* ---------------------------------------------------------------------------
