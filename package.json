@@ -20,6 +20,7 @@
     "@lancedb/lancedb": "^0.27.1",
     "@mariozechner/pi-ai": "^0.60.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
+    "csv-parse": "^6.2.1",
     "i18next": "^25.8.19",
     "lucide-react": "^0.577.0",
     "pdfjs-dist": "^5.5.207",
@@ -30,6 +31,7 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "turndown": "^7.2.2",
+    "xlsx": "^0.18.5",
     "zustand": "^5.0.12"
   },
   "devDependencies": {

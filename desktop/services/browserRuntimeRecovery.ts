@@ -1,3 +1,4 @@
+import type { BrowserContext } from "playwright-core";
 import type { BrowserToolName } from "./browserTools.js";
 
 const STALE_TARGET_SAFE_TOOLS = new Set<BrowserToolName>([
@@ -6,6 +7,19 @@ const STALE_TARGET_SAFE_TOOLS = new Set<BrowserToolName>([
   "browser_wait",
   "browser_screenshot",
   "browser_extract_text",
+  "browser_click",
+  "browser_type",
+  "browser_select",
+  "browser_fill",
+]);
+
+const RETRYABLE_ACTION_TOOLS = new Set<BrowserToolName>([
+  "browser_click",
+  "browser_type",
+  "browser_hover",
+  "browser_fill",
+  "browser_select",
+  "browser_drag",
 ]);
 
 function normalizeErrorMessage(error: unknown): string {
@@ -23,6 +37,18 @@ export function isBrowserTargetUnavailableError(error: unknown): boolean {
   );
 }
 
+export function isBrowserClosedError(error: unknown): boolean {
+  const message = normalizeErrorMessage(error);
+  return (
+    message.includes("browser has been closed") ||
+    message.includes("browser.newcontext: target closed") ||
+    message.includes("connection refused") ||
+    message.includes("websocket error") ||
+    message.includes("protocol error") ||
+    message.includes("cdp session closed")
+  );
+}
+
 export function isRetryableBrowserNavigateError(error: unknown): boolean {
   const message = normalizeErrorMessage(error);
   return (
@@ -31,6 +57,21 @@ export function isRetryableBrowserNavigateError(error: unknown): boolean {
     message.includes("page has been closed") ||
     message.includes("browser has been closed")
   );
+}
+
+export function isRetryableBrowserActionError(error: unknown): boolean {
+  const message = normalizeErrorMessage(error);
+  return (
+    isRetryableBrowserNavigateError(error) ||
+    message.includes("execution context was destroyed") ||
+    message.includes("target closed") ||
+    message.includes("session closed") ||
+    message.includes("object is not available")
+  );
+}
+
+export function isRetryableActionTool(toolName: BrowserToolName): boolean {
+  return RETRYABLE_ACTION_TOOLS.has(toolName);
 }
 
 export function shouldRetryBrowserToolWithoutTarget(params: {
@@ -55,4 +96,22 @@ export function stripBrowserTargetId(
   const next = { ...args };
   delete next.targetId;
   return next;
+}
+
+export async function forceDisconnectBrowser(params: {
+  context: BrowserContext | null;
+}): Promise<void> {
+  if (!params.context) return;
+  try {
+    params.context.removeAllListeners();
+    for (const page of params.context.pages()) {
+      page.removeAllListeners();
+    }
+    await Promise.race([
+      params.context.close(),
+      new Promise((resolve) => setTimeout(resolve, 3000)),
+    ]);
+  } catch {
+    // Best-effort: swallow errors during force disconnect
+  }
 }

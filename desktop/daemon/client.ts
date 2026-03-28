@@ -5,30 +5,83 @@ type DaemonClientOptions = {
   token: string;
 };
 
+/** Error codes that indicate the daemon is unreachable and a retry may help. */
+const RETRIABLE_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "EPIPE", "ETIMEDOUT", "UND_ERR_CONNECT_TIMEOUT"]);
+
+function isRetriableError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as any)?.code ?? (error as any)?.cause?.code;
+  if (code && RETRIABLE_CODES.has(code)) return true;
+  // Node fetch wraps the underlying error in `cause`
+  const cause = (error as any)?.cause;
+  if (cause instanceof Error) {
+    const causeCode = (cause as any)?.code;
+    if (causeCode && RETRIABLE_CODES.has(causeCode)) return true;
+  }
+  return false;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export class DaemonClient {
-  private readonly baseUrl: string;
+  private baseUrl: string;
   private readonly token: string;
+
+  /** Max retry attempts for transient connection errors. */
+  private readonly maxRetries = 4;
+
+  /** Initial delay between retries (doubles per attempt). */
+  private readonly baseDelayMs = 300;
 
   constructor(options: DaemonClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.token = options.token;
   }
 
-  private async request<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      ...init,
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {}),
-      },
-    });
+  /** Allow the process manager to update the URL when the daemon restarts on a new port. */
+  updateBaseUrl(url: string): void {
+    this.baseUrl = url.replace(/\/+$/, "");
+  }
 
-    if (!response.ok) {
-      throw new Error(await response.text());
+  private async request<T>(path: string, init?: RequestInit): Promise<T> {
+    let lastError: Error | undefined;
+
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      try {
+        const response = await fetch(`${this.baseUrl}${path}`, {
+          ...init,
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            "Content-Type": "application/json",
+            ...(init?.headers ?? {}),
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+
+        return (await response.json()) as T;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        if (isRetriableError(error) && attempt < this.maxRetries) {
+          const delay = this.baseDelayMs * 2 ** attempt;
+          console.warn(
+            `[daemon-client] ${path} attempt ${attempt + 1}/${this.maxRetries + 1} failed (${(lastError as any)?.cause?.code ?? lastError.message}), retrying in ${delay}ms…`,
+          );
+          await sleep(delay);
+          continue;
+        }
+
+        throw lastError;
+      }
     }
 
-    return (await response.json()) as T;
+    // Unreachable, but TypeScript needs it.
+    throw lastError!;
   }
 
   get<T>(path: string): Promise<T> {
@@ -51,6 +104,25 @@ export class DaemonClient {
 
   delete<T>(path: string): Promise<T> {
     return this.request<T>(path, { method: "DELETE" });
+  }
+
+  /**
+   * Quick health check — resolves true when the daemon is reachable, false otherwise.
+   * Uses a short timeout so it won't block callers for too long.
+   */
+  async isHealthy(): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      const response = await fetch(`${this.baseUrl}/connectivity`, {
+        headers: { Authorization: `Bearer ${this.token}` },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
 
   async subscribe(onEvent: (event: DaemonEnvelope) => void, signal?: AbortSignal): Promise<void> {

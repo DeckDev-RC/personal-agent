@@ -2,9 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChevronDown } from "lucide-react";
+import { Bot, ChevronDown } from "lucide-react";
 import type { AttachmentPayload } from "../../../../src/types/runtime.js";
-import Badge from "../shared/Badge";
 import MessageBubble from "./MessageBubble";
 
 type Message = {
@@ -68,29 +67,39 @@ function DateSeparator({ label }: { label: string }) {
 
 function StreamingDots({ label }: { label?: string }) {
   return (
-    <div className="flex items-center gap-2.5 border-l-2 border-accent py-4 pl-4">
-      <div className="flex items-center gap-1.5">
-        {[0, 1, 2].map((index) => (
-          <div
-            key={index}
-            className="h-1.5 w-1.5 rounded-full bg-accent"
-            style={{
-              animation: "pulse-dot 1.4s ease-in-out infinite",
-              animationDelay: `${index * 160}ms`,
-            }}
-          />
-        ))}
+    <div className="flex items-start gap-3">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+        <Bot size={13} />
       </div>
-      {label && <span className="text-[11px] text-text-secondary/60">{label}</span>}
+      <div className="flex items-center gap-2.5 py-2">
+        <div className="flex items-center gap-1.5">
+          {[0, 1, 2].map((index) => (
+            <div
+              key={index}
+              className="h-1.5 w-1.5 rounded-full bg-accent"
+              style={{
+                animation: "pulse-dot 1.4s ease-in-out infinite",
+                animationDelay: `${index * 160}ms`,
+              }}
+            />
+          ))}
+        </div>
+        {label && <span className="text-[11px] text-text-secondary/60">{label}</span>}
+      </div>
     </div>
   );
 }
 
-const streamingMarkdownClassName =
-  "prose prose-invert prose-base max-w-none text-text-primary leading-[1.65] " +
-  "[&_p]:my-2 [&_p]:leading-[1.65] [&_ul]:my-1.5 [&_ol]:my-1.5 [&_li]:my-0.5 " +
-  "[&_pre]:rounded-xl [&_pre]:border [&_pre]:border-border [&_pre]:bg-surface-inset [&_pre]:px-4 [&_pre]:py-3 " +
-  "[&_code]:text-accent [&_code]:text-[0.9em] [&_a]:text-accent";
+const streamingMdClass =
+  "prose prose-invert prose-sm max-w-none text-text-primary/90 leading-relaxed " +
+  "[&_p]:my-1.5 [&_p]:leading-relaxed [&_ul]:my-2 [&_ul]:pl-4 [&_ol]:my-2 [&_ol]:pl-4 [&_li]:my-0.5 " +
+  "[&_li]:text-text-primary/85 [&_li_p]:my-0 " +
+  "[&_pre]:rounded-xl [&_pre]:border [&_pre]:border-border/60 [&_pre]:bg-[#0c0c0e] [&_pre]:px-4 [&_pre]:py-3 [&_pre]:my-3 " +
+  "[&_:not(pre)>code]:rounded-md [&_:not(pre)>code]:bg-surface-inset [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-0.5 " +
+  "[&_:not(pre)>code]:text-accent [&_:not(pre)>code]:text-[0.88em] " +
+  "[&_a]:text-accent [&_a]:underline [&_a]:underline-offset-2 " +
+  "[&_blockquote]:border-l-2 [&_blockquote]:border-accent/40 [&_blockquote]:pl-3 " +
+  "[&_strong]:text-text-primary [&_strong]:font-semibold ";
 
 export default function MessageList({
   messages,
@@ -208,19 +217,12 @@ export default function MessageList({
         {streaming && (
           <div className="mt-5">
             {streamingText ? (
-              <div className="flex w-full justify-start">
-                <div className="max-w-[760px] min-w-0 border-l-2 border-accent pl-4">
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <div className="text-[11px] font-medium tracking-tight text-text-secondary">
-                      {t("chat.roles.assistant")}
-                    </div>
-                    {thinkingText && (
-                      <Badge color="gray" className="px-1.5 py-0 text-[10px]">
-                        {t("chat.streamingPhase")}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className={streamingMarkdownClassName}>
+              <div className="flex items-start gap-3">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+                  <Bot size={13} />
+                </div>
+                <div className="min-w-0 max-w-[680px]">
+                  <div className={streamingMdClass}>
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {streamingText}
                     </ReactMarkdown>

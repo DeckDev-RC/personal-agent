@@ -12,7 +12,7 @@ import { ensureDir, readJsonFile, writeTextFile } from "./v2Fs.js";
 let database: DatabaseSync | null = null;
 let initialized = false;
 let initPromise: Promise<void> | null = null;
-const CURRENT_SCHEMA_VERSION = 3;
+const CURRENT_SCHEMA_VERSION = 4;
 
 function getDbInternal(): DatabaseSync {
   if (!database) {
@@ -332,6 +332,33 @@ function initSchema(db: DatabaseSync) {
       updated_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS cowork_projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      project_context_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      milestones_json TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS cowork_meetings (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      scheduled_at INTEGER NOT NULL,
+      duration INTEGER NOT NULL DEFAULT 3600000,
+      participants_json TEXT NOT NULL DEFAULT '[]',
+      project_context_id TEXT,
+      prep_session_id TEXT,
+      notes_session_id TEXT,
+      action_item_task_ids_json TEXT NOT NULL DEFAULT '[]',
+      follow_up_draft_ids_json TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'upcoming',
+      source TEXT NOT NULL DEFAULT 'manual',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS subagents (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -537,6 +564,39 @@ async function runMigration() {
   if (version < 3) {
     ensureArtifactsAllowNullRunId(db);
     version = 3;
+    setSchemaVersion(db, version);
+  }
+
+  if (version < 4) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS cowork_projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        project_context_id TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        milestones_json TEXT NOT NULL DEFAULT '[]',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS cowork_meetings (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        scheduled_at INTEGER NOT NULL,
+        duration INTEGER NOT NULL DEFAULT 3600000,
+        participants_json TEXT NOT NULL DEFAULT '[]',
+        project_context_id TEXT,
+        prep_session_id TEXT,
+        notes_session_id TEXT,
+        action_item_task_ids_json TEXT NOT NULL DEFAULT '[]',
+        follow_up_draft_ids_json TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'upcoming',
+        source TEXT NOT NULL DEFAULT 'manual',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+    version = 4;
     setSchemaVersion(db, version);
   }
 

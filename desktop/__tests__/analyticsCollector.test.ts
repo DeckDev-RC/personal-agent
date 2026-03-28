@@ -69,7 +69,6 @@ describe("analyticsCollector", () => {
 
   describe("getWeeklyReport", () => {
     it("aggregates events into report", async () => {
-      const now = Date.now();
       // Track various event types
       await trackEvent("task_completed");
       await trackEvent("task_completed");
@@ -79,6 +78,8 @@ describe("analyticsCollector", () => {
       await trackEvent("mcp_tool_call");
       await trackEvent("draft_sent");
 
+      // Capture `now` AFTER inserts so weekEnd safely includes all events.
+      const now = Date.now();
       // Use a weekStart that includes now
       const weekStart = now - 7 * 24 * 60 * 60 * 1000;
       const report = await getWeeklyReport(weekStart);

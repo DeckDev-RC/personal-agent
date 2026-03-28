@@ -14,6 +14,11 @@ export default defineConfig({
           include: ["ui/src/**/*.test.{ts,tsx}"],
           setupFiles: ["./ui/src/__tests__/setup.ts"],
           globals: true,
+          server: {
+            deps: {
+              external: [/^node:/],
+            },
+          },
         },
       },
       {
@@ -22,6 +27,11 @@ export default defineConfig({
           environment: "node",
           include: ["desktop/__tests__/**/*.test.ts"],
           globals: true,
+          server: {
+            deps: {
+              external: [/^node:/],
+            },
+          },
         },
       },
     ],

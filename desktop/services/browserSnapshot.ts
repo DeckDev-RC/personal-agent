@@ -112,7 +112,7 @@ export function flattenAccessibilitySnapshot(
   }
 
   const role = typeof node.role === "string" ? node.role : "unknown";
-  const ref = `a${nodes.length + 1}`;
+  const ref = `e${nodes.length + 1}`;
   nodes.push({
     ref,
     role,

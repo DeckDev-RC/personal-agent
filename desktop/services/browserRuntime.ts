@@ -70,6 +70,7 @@ import {
   appendBrowserConsoleEntry,
   appendBrowserPageErrorEntry,
   clearBrowserRoleRefs,
+  cleanupBrowserTarget,
   createBrowserSessionState,
   getStoredBrowserRoleRefs,
   readBrowserConsoleEntries,
@@ -94,7 +95,10 @@ import {
 } from "./browserTargetRegistry.js";
 import { getConnection, resolveConnectionSessionId } from "./connectionManager.js";
 import {
+  forceDisconnectBrowser,
+  isRetryableBrowserActionError,
   isRetryableBrowserNavigateError,
+  isRetryableActionTool,
   shouldRetryBrowserToolWithoutTarget,
   stripBrowserTargetId,
 } from "./browserRuntimeRecovery.js";
@@ -364,8 +368,13 @@ function observeBrowserPage(state: BrowserState, page: Page): void {
   });
 
   page.on("close", () => {
+    const closedTargetId = getBrowserTargetIdForPage(state.targetRegistry, page);
     observedBrowserPages.delete(page);
     observedBrowserRequests.delete(page);
+    if (closedTargetId) {
+      invalidateBrowserTarget({ registry: state.targetRegistry, targetId: closedTargetId, page });
+      cleanupBrowserTarget(state.sessionState, closedTargetId);
+    }
   });
 }
 
@@ -461,11 +470,7 @@ async function relaunchBrowserState(sessionId: string): Promise<BrowserState> {
   const existing = browserStates.get(sessionId);
   if (existing) {
     browserStates.delete(sessionId);
-    try {
-      await existing.context.close();
-    } catch {
-      // Best-effort teardown before re-launching.
-    }
+    await forceDisconnectBrowser({ context: existing.context });
   }
   return await launchBrowserState(sessionId);
 }
@@ -497,6 +502,17 @@ async function resolveBrowserPage(params: {
   });
 
   if (!resolved) {
+    // Single-page fallback: if only one page exists, use it regardless of targetId
+    const openPages = params.state.context.pages().filter((p) => !p.isClosed());
+    if (openPages.length === 1) {
+      const fallbackPage = openPages[0]!;
+      observeBrowserPage(params.state, fallbackPage);
+      const fallbackTargetId =
+        getBrowserTargetIdForPage(params.state.targetRegistry, fallbackPage) ??
+        registerBrowserTarget({ registry: params.state.targetRegistry, page: fallbackPage });
+      setBrowserSessionActiveTarget(params.state.sessionState, fallbackTargetId);
+      return { page: fallbackPage, targetId: fallbackTargetId };
+    }
     const requestedTargetId = resolveBrowserTargetId(params.targetId);
     throw new Error(
       `Browser target "${requestedTargetId}" is not available. Open it first with browser_open using the same targetId.`,
@@ -566,6 +582,33 @@ async function resolveBrowserNavigationPolicy(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Global role refs cache (survives reconnections, LRU with 50-entry cap)
+// ---------------------------------------------------------------------------
+
+const globalRoleRefsCache = new Map<string, { refs: BrowserRoleRefMap; mode: BrowserRefMode; timestamp: number }>();
+const GLOBAL_REFS_CACHE_LIMIT = 50;
+
+function globalRefsCacheKey(sessionId: string, targetId: BrowserTargetId): string {
+  return `${sessionId}::${targetId}`;
+}
+
+function cacheGlobalRoleRefs(sessionId: string, targetId: BrowserTargetId, refs: BrowserRoleRefMap, mode: BrowserRefMode): void {
+  const key = globalRefsCacheKey(sessionId, targetId);
+  if (globalRoleRefsCache.size >= GLOBAL_REFS_CACHE_LIMIT && !globalRoleRefsCache.has(key)) {
+    const oldest = globalRoleRefsCache.keys().next().value;
+    if (oldest) globalRoleRefsCache.delete(oldest);
+  }
+  globalRoleRefsCache.set(key, { refs: { ...refs }, mode, timestamp: Date.now() });
+}
+
+function getCachedGlobalRoleRefs(sessionId: string, targetId: BrowserTargetId): { refs: BrowserRoleRefMap; mode: BrowserRefMode } | null {
+  const entry = globalRoleRefsCache.get(globalRefsCacheKey(sessionId, targetId));
+  return entry ? { refs: entry.refs, mode: entry.mode } : null;
+}
+
+// ---------------------------------------------------------------------------
+
 function storeRoleRefsForTarget(params: {
   state: BrowserState;
   targetId: BrowserTargetId;
@@ -585,6 +628,11 @@ function storeRoleRefsForTarget(params: {
         ? params.url
         : undefined,
   });
+  // Also cache globally for recovery across reconnections
+  const sessionId = [...browserStates.entries()].find(([, s]) => s === params.state)?.[0];
+  if (sessionId) {
+    cacheGlobalRoleRefs(sessionId, params.targetId, params.refs, params.mode);
+  }
 }
 
 function clearRoleRefsForTarget(
@@ -684,11 +732,25 @@ function resolveLocatorInput(params: {
   }
 
   const targetId = resolveBrowserTargetId(params.targetId);
-  const stored = getStoredBrowserRoleRefs(params.state.sessionState, targetId);
+  let stored = getStoredBrowserRoleRefs(params.state.sessionState, targetId);
   if (!stored) {
-    throw new Error(
-      `No stored browser refs for target "${targetId}". Run browser_snapshot with snapshotFormat="role" first.`,
-    );
+    // Fallback: try global cache (survives reconnections)
+    const sessionId = [...browserStates.entries()].find(([, s]) => s === params.state)?.[0];
+    const cached = sessionId ? getCachedGlobalRoleRefs(sessionId, targetId) : null;
+    if (cached) {
+      storeBrowserRoleRefs({
+        state: params.state.sessionState,
+        targetId,
+        refs: cached.refs,
+        mode: cached.mode,
+      });
+      stored = getStoredBrowserRoleRefs(params.state.sessionState, targetId);
+    }
+    if (!stored) {
+      throw new Error(
+        `No stored browser refs for target "${targetId}". Run browser_snapshot with snapshotFormat="role" first.`,
+      );
+    }
   }
 
   if (stored.url && params.page.url() && stored.url !== params.page.url()) {
@@ -698,18 +760,6 @@ function resolveLocatorInput(params: {
   }
 
   const effectiveFrame = frame ?? stored.frame;
-  if (stored.mode === "aria") {
-    return {
-      locator: resolveSelectorLocator(
-        params.page,
-        `aria-ref=${ref}`,
-        effectiveFrame,
-      ),
-      ref,
-      frame: effectiveFrame,
-      label: ref,
-    };
-  }
 
   const refInfo = stored.refs[ref];
   if (!refInfo) {
@@ -1224,16 +1274,18 @@ function truncateText(value: string, maxChars?: number): {
   };
 }
 
-function buildSnapshotStats(snapshot: string): BrowserSnapshotStats {
+function buildSnapshotStats(snapshot: string, refs?: BrowserRoleRefMap): BrowserSnapshotStats {
+  const refCount = refs ? Object.keys(refs).length : 0;
   return {
     lines: snapshot ? snapshot.split(/\r?\n/).length : 0,
     chars: snapshot.length,
-    refs: 0,
-    interactive: 0,
+    refs: refCount,
+    interactive: refCount,
   };
 }
 
 async function buildAiSnapshot(params: {
+  state: BrowserState;
   page: Page;
   request: BrowserSnapshotRequest;
   currentUrl: string;
@@ -1252,6 +1304,34 @@ async function buildAiSnapshot(params: {
   const targetId = resolveBrowserTargetId(params.request.targetId);
   const profile = normalizeBrowserProfile(params.request.profile);
 
+  // Generate refs from accessibility snapshot so AI format also provides stable element references
+  let refs: BrowserRoleRefMap | undefined;
+  try {
+    const accessibility = (
+      params.page as Page & {
+        accessibility?: {
+          snapshot: (options?: Record<string, unknown>) => Promise<unknown>;
+        };
+      }
+    ).accessibility;
+    if (accessibility?.snapshot) {
+      const rawSnapshot = (await accessibility.snapshot({
+        interestingOnly: false,
+      })) as BrowserAccessibilitySnapshotNode | null;
+      const built = buildRoleSnapshotFromAccessibilitySnapshot(rawSnapshot);
+      refs = built.refs;
+      storeRoleRefsForTarget({
+        state: params.state,
+        targetId,
+        refs: built.refs,
+        mode: "role",
+        url: params.currentUrl,
+      });
+    }
+  } catch {
+    // Best-effort: if refs generation fails, AI snapshot still works without them
+  }
+
   return {
     ok: true,
     format: "ai",
@@ -1261,9 +1341,10 @@ async function buildAiSnapshot(params: {
     selector: params.request.selector,
     frame: params.request.frame,
     snapshot: capped.text,
+    refs,
     html,
     truncated: capped.truncated,
-    stats: buildSnapshotStats(capped.text),
+    stats: buildSnapshotStats(capped.text, refs),
     labels: params.request.labels,
   };
 }
@@ -1337,13 +1418,7 @@ async function buildRoleSnapshot(params: {
   const profile = normalizeBrowserProfile(params.request.profile);
   const refsMode = params.request.refs ?? "role";
 
-  if (refsMode === "aria") {
-    if (params.request.selector || params.request.frame) {
-      throw new Error(
-        "refs=aria does not support selector/frame snapshots yet.",
-      );
-    }
-
+  if (refsMode === "aria" && !params.request.selector && !params.request.frame) {
     const built = await buildRoleSnapshotFromPageAiSnapshot(
       params.page as Parameters<typeof buildRoleSnapshotFromPageAiSnapshot>[0],
       {
@@ -1414,7 +1489,7 @@ async function buildRoleSnapshot(params: {
       state: params.state,
       targetId,
       refs: built.refs,
-      mode: "role",
+      mode: refsMode,
       frame: params.request.frame,
       url: params.currentUrl,
     });
@@ -1805,6 +1880,7 @@ export async function executeBrowserTool(
                 currentUrl: page.url(),
               })
           : await buildAiSnapshot({
+              state,
               page,
               request: snapshotRequest,
                 currentUrl: page.url(),
@@ -3010,6 +3086,29 @@ export async function executeBrowserTool(
 
     throw new Error(`Unsupported browser tool "${toolName}".`);
   } catch (error) {
+    // Retry once for retryable action errors (stale context, target closed, etc.)
+    if (
+      !args._browserRetryAttempt &&
+      isRetryableActionTool(toolName) &&
+      isRetryableBrowserActionError(error)
+    ) {
+      if (activeTargetId) {
+        clearRoleRefsForTarget(state, activeTargetId);
+      }
+      return await executeBrowserTool(
+        toolName,
+        { ...args, _browserRetryAttempt: true },
+        {
+          ...ctx,
+          sessionId: resolvedSessionId,
+          connectionId:
+            typeof args.connectionId === "string"
+              ? args.connectionId
+              : ctx.connectionId,
+        },
+      );
+    }
+
     if (
       shouldRetryBrowserToolWithoutTarget({
         toolName,

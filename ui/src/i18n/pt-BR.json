@@ -18,7 +18,110 @@
     "mcp": "MCPs",
     "analytics": "Analytics",
     "logs": "Logs",
-    "settings": "Config"
+    "settings": "Config",
+    "cowork": "Cowork",
+    "inbox": "Inbox",
+    "communication": "Comunicacao",
+    "automation": "Automacao",
+    "plugins": "Plugins"
+  },
+  "cowork": {
+    "tab": {
+      "dashboard": "Dashboard",
+      "meetings": "Reunioes",
+      "projects": "Projetos",
+      "communications": "Comunicacao",
+      "focus": "Foco"
+    },
+    "briefing": {
+      "overdue": "Atrasadas",
+      "dueToday": "Para hoje",
+      "inProgress": "Em andamento",
+      "drafts": "Rascunhos",
+      "todayMeetings": "Reunioes de hoje"
+    },
+    "quickActions": "Acoes Rapidas",
+    "quick": {
+      "email": "Redigir Email",
+      "meeting": "Agendar Reuniao",
+      "report": "Criar Relatorio",
+      "task": "Nova Tarefa",
+      "chat": "Chat com IA",
+      "search": "Pesquisar"
+    },
+    "dashboard": {
+      "recentFiles": "Arquivos Recentes",
+      "meetings": "Proximas Reunioes",
+      "projects": "Projetos Ativos",
+      "viewAll": "Ver todas"
+    },
+    "meetings": {
+      "title": "Reunioes",
+      "new": "Nova Reuniao",
+      "empty": "Nenhuma reuniao agendada",
+      "upcoming": "Proximas",
+      "completed": "Concluidas",
+      "newTitle": "Nova Reuniao",
+      "titlePlaceholder": "Titulo da reuniao",
+      "durationPlaceholder": "Duracao (minutos)",
+      "participantsPlaceholder": "Participantes (separados por virgula)",
+      "extractTitle": "Extrair Action Items",
+      "extractHint": "Cole as notas da reuniao. Itens com - ou * serao extraidos como tarefas.",
+      "extractBtn": "Extrair Tarefas"
+    },
+    "meeting": {
+      "upcoming": "Agendada",
+      "inProgress": "Em andamento",
+      "completed": "Concluida",
+      "participants": "participantes",
+      "actionItems": "action items",
+      "complete": "Concluir",
+      "extract": "Extrair Acoes"
+    },
+    "projects": {
+      "title": "Projetos",
+      "new": "Novo Projeto",
+      "empty": "Nenhum projeto criado",
+      "active": "Ativos",
+      "paused": "Pausados",
+      "completed": "Concluidos",
+      "newTitle": "Novo Projeto",
+      "namePlaceholder": "Nome do projeto",
+      "selectContext": "Selecione um contexto"
+    },
+    "project": {
+      "active": "Ativo",
+      "paused": "Pausado",
+      "completed": "Concluido",
+      "openTasks": "abertas",
+      "overdue": "atrasadas",
+      "milestones": "marcos",
+      "nextDeadline": "Proximo prazo"
+    },
+    "comms": {
+      "title": "Comunicacao",
+      "compose": "Compor",
+      "drafts": "Rascunhos Pendentes",
+      "noDrafts": "Nenhum rascunho pendente",
+      "sent": "Enviadas Recentemente"
+    },
+    "focus": {
+      "title": "Modo Foco",
+      "selectTask": "Selecione uma tarefa para focar ou inicie sem tarefa.",
+      "startFree": "Iniciar sem tarefa",
+      "pickTask": "Ou selecione uma tarefa",
+      "exit": "Sair do foco",
+      "currentTask": "Tarefa Atual",
+      "complete": "Concluir",
+      "defer": "Adiar",
+      "freeMode": "Modo livre - concentre-se no que precisa fazer"
+    },
+    "empty": {
+      "title": "Bem-vindo ao Cowork",
+      "description": "Seu assistente de escritorio inteligente. Conecte seus servicos e comece a trabalhar de forma mais produtiva.",
+      "connectMcp": "Conectar servicos (Gmail, Calendar, Slack)",
+      "createTasks": "Criar suas primeiras tarefas"
+    }
   },
   "chat": {
     "placeholder": "Digite uma mensagem...",

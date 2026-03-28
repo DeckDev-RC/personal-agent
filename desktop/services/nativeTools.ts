@@ -42,6 +42,19 @@ import { getSessionRecord } from "./v2SessionStore.js";
 import { deleteWebRecipe, executeWebRecipe, getWebRecipe, listWebRecipes, normalizeWebRecipe, saveWebRecipe } from "./webRecipes.js";
 import { generateImages } from "./imageGenerator.js";
 import { synthesizeSpeech } from "./ttsEngine.js";
+import {
+  loadDocument,
+  listDocuments,
+  previewData,
+  queryData,
+  computeStats,
+  crossReference,
+  summarizeDocument,
+  searchText,
+  removeDocument,
+  type FilterDef,
+  type AggregateDef,
+} from "./documentAnalysis.js";
 
 export type NativeToolName =
   | "list_dir"
@@ -73,7 +86,9 @@ export type NativeToolName =
   | "activate_automation"
   | "query_database"
   | "render_canvas"
-  | "execute_code";
+  | "execute_code"
+  | "load_document"
+  | "analyze_data";
 
 export type ToolRiskDecision =
   | { mode: "allow"; reason: string }
@@ -887,6 +902,10 @@ export function classifyNativeToolRisk(
     return { mode: "allow", reason: "Read-only canvas rendering." };
   }
 
+  if (toolName === "load_document" || toolName === "analyze_data") {
+    return { mode: "allow", reason: "Read-only document analysis." };
+  }
+
   if (toolName === "execute_code") {
     return {
       mode: "approval",
@@ -1591,6 +1610,128 @@ export function buildNativeTools(): NativeToolDefinition[] {
           ),
           stdin: Type.Optional(
             Type.String({ description: "Optional stdin input for the process." }),
+          ),
+        },
+        { additionalProperties: false },
+      ),
+    },
+    {
+      name: "load_document",
+      description:
+        "Load and parse a document file (Excel, CSV, PDF, JSON, TXT) into memory for analysis. Returns a summary of the loaded content including sheet names, column headers, row counts, or text length. Loaded documents persist in the session for subsequent analyze_data calls.",
+      metadata: {
+        capabilities: ["read_only"],
+        defaultTimeoutMs: 15_000,
+      },
+      parameters: Type.Object(
+        {
+          filePath: Type.String({
+            description: "Absolute path to the file to load. Supported: .xlsx, .xls, .xlsb, .ods, .csv, .tsv, .pdf, .json, .txt, .md",
+          }),
+          alias: Type.Optional(
+            Type.String({
+              description: "Short alias to reference this document in analyze_data queries. Defaults to the filename stem.",
+            }),
+          ),
+          sheet: Type.Optional(
+            Type.String({
+              description: "For Excel files: specific sheet name to load. If omitted, all sheets are loaded.",
+            }),
+          ),
+          maxRows: Type.Optional(
+            Type.Number({
+              description: "Maximum rows to load from spreadsheet/CSV files (default: 50000).",
+            }),
+          ),
+        },
+        { additionalProperties: false },
+      ),
+    },
+    {
+      name: "analyze_data",
+      description:
+        "Query, analyze, and cross-reference documents previously loaded with load_document. Actions: list (show loaded docs), preview (show rows), query (filter/search/sort), stats (aggregate with optional groupBy), cross_reference (join two documents), summarize (column statistics or text summary), search (find text), remove (unload a document).",
+      metadata: {
+        capabilities: ["read_only"],
+        defaultTimeoutMs: 30_000,
+      },
+      parameters: Type.Object(
+        {
+          action: Type.Union([
+            Type.Literal("list"),
+            Type.Literal("preview"),
+            Type.Literal("query"),
+            Type.Literal("stats"),
+            Type.Literal("cross_reference"),
+            Type.Literal("summarize"),
+            Type.Literal("search"),
+            Type.Literal("remove"),
+          ]),
+          document: Type.Optional(
+            Type.String({ description: "Document alias or filename to operate on." }),
+          ),
+          sheet: Type.Optional(
+            Type.String({ description: "Sheet name within the document (for multi-sheet Excel files)." }),
+          ),
+          columns: Type.Optional(
+            Type.Array(Type.String(), { description: "Column names to include in the result." }),
+          ),
+          filter: Type.Optional(
+            Type.Object({
+              column: Type.String(),
+              operator: Type.Union([
+                Type.Literal("eq"), Type.Literal("neq"), Type.Literal("gt"),
+                Type.Literal("gte"), Type.Literal("lt"), Type.Literal("lte"),
+                Type.Literal("contains"), Type.Literal("starts_with"),
+                Type.Literal("in"), Type.Literal("not_in"),
+              ]),
+              value: Type.Any(),
+            }),
+          ),
+          filters: Type.Optional(
+            Type.Array(
+              Type.Object({
+                column: Type.String(),
+                operator: Type.Union([
+                  Type.Literal("eq"), Type.Literal("neq"), Type.Literal("gt"),
+                  Type.Literal("gte"), Type.Literal("lt"), Type.Literal("lte"),
+                  Type.Literal("contains"), Type.Literal("starts_with"),
+                  Type.Literal("in"), Type.Literal("not_in"),
+                ]),
+                value: Type.Any(),
+              }),
+              { description: "Array of filter objects for compound filtering." },
+            ),
+          ),
+          groupBy: Type.Optional(Type.String({ description: "Column name to group results by." })),
+          aggregate: Type.Optional(
+            Type.Object({
+              column: Type.String(),
+              function: Type.Union([
+                Type.Literal("sum"), Type.Literal("avg"), Type.Literal("min"),
+                Type.Literal("max"), Type.Literal("count"), Type.Literal("distinct"),
+              ]),
+            }),
+          ),
+          sortBy: Type.Optional(Type.String({ description: "Column to sort by." })),
+          sortOrder: Type.Optional(Type.Union([Type.Literal("asc"), Type.Literal("desc")])),
+          limit: Type.Optional(Type.Number({ description: "Max rows to return (default 50)." })),
+          offset: Type.Optional(Type.Number({ description: "Row offset for pagination." })),
+          targetDocument: Type.Optional(
+            Type.String({ description: "Second document alias for cross_reference action." }),
+          ),
+          targetSheet: Type.Optional(Type.String({ description: "Target sheet name for cross_reference." })),
+          joinColumn: Type.Optional(
+            Type.String({ description: "Column in source document to match on." }),
+          ),
+          targetJoinColumn: Type.Optional(
+            Type.String({ description: "Column in target document to match on." }),
+          ),
+          joinType: Type.Optional(
+            Type.Union([Type.Literal("inner"), Type.Literal("left"), Type.Literal("full")]),
+          ),
+          searchText: Type.Optional(
+            Type.String({ description: "Text to search for within document content." }),
           ),
         },
         { additionalProperties: false },
@@ -2606,6 +2747,102 @@ export async function executeNativeTool(
           },
         },
       };
+    }
+    case "load_document": {
+      const sessionId = ctx.sessionId ?? "default";
+      try {
+        const { summary } = await loadDocument(sessionId, String(args.filePath ?? ""), {
+          alias: args.alias ? String(args.alias) : undefined,
+          sheet: args.sheet ? String(args.sheet) : undefined,
+          maxRows: typeof args.maxRows === "number" ? args.maxRows : undefined,
+        });
+        return { content: summary };
+      } catch (err) {
+        return { content: `Error: ${(err as Error).message}`, isError: true };
+      }
+    }
+    case "analyze_data": {
+      const sessionId = ctx.sessionId ?? "default";
+      const action = String(args.action ?? "list");
+      const docAlias = args.document ? String(args.document) : "";
+      try {
+        switch (action) {
+          case "list":
+            return { content: listDocuments(sessionId) };
+          case "preview":
+            return {
+              content: previewData(sessionId, docAlias, {
+                sheet: args.sheet ? String(args.sheet) : undefined,
+                limit: typeof args.limit === "number" ? args.limit : undefined,
+                offset: typeof args.offset === "number" ? args.offset : undefined,
+              }),
+            };
+          case "query":
+            return {
+              content: queryData(sessionId, docAlias, {
+                sheet: args.sheet ? String(args.sheet) : undefined,
+                columns: normalizeStringArray(args.columns),
+                filter: asObject(args.filter) as FilterDef | undefined,
+                filters: Array.isArray(args.filters) ? (args.filters as FilterDef[]) : undefined,
+                sortBy: args.sortBy ? String(args.sortBy) : undefined,
+                sortOrder: args.sortOrder === "desc" ? "desc" : args.sortOrder === "asc" ? "asc" : undefined,
+                limit: typeof args.limit === "number" ? args.limit : undefined,
+                offset: typeof args.offset === "number" ? args.offset : undefined,
+              }),
+            };
+          case "stats": {
+            const agg = asObject(args.aggregate);
+            if (!agg) return { content: "Error: 'aggregate' parameter is required for stats action.", isError: true };
+            return {
+              content: computeStats(sessionId, docAlias, {
+                sheet: args.sheet ? String(args.sheet) : undefined,
+                aggregate: agg as unknown as AggregateDef,
+                groupBy: args.groupBy ? String(args.groupBy) : undefined,
+                filter: asObject(args.filter) as FilterDef | undefined,
+                filters: Array.isArray(args.filters) ? (args.filters as FilterDef[]) : undefined,
+              }),
+            };
+          }
+          case "cross_reference": {
+            const targetDoc = args.targetDocument ? String(args.targetDocument) : "";
+            if (!targetDoc) return { content: "Error: 'targetDocument' parameter is required for cross_reference.", isError: true };
+            const joinCol = args.joinColumn ? String(args.joinColumn) : "";
+            if (!joinCol) return { content: "Error: 'joinColumn' parameter is required for cross_reference.", isError: true };
+            return {
+              content: crossReference(sessionId, docAlias, targetDoc, {
+                sourceSheet: args.sheet ? String(args.sheet) : undefined,
+                targetSheet: args.targetSheet ? String(args.targetSheet) : undefined,
+                joinColumn: joinCol,
+                targetJoinColumn: args.targetJoinColumn ? String(args.targetJoinColumn) : undefined,
+                joinType: args.joinType === "left" ? "left" : args.joinType === "full" ? "full" : "inner",
+                columns: normalizeStringArray(args.columns),
+                filter: asObject(args.filter) as FilterDef | undefined,
+                filters: Array.isArray(args.filters) ? (args.filters as FilterDef[]) : undefined,
+                aggregate: asObject(args.aggregate) as unknown as AggregateDef | undefined,
+                groupBy: args.groupBy ? String(args.groupBy) : undefined,
+                sortBy: args.sortBy ? String(args.sortBy) : undefined,
+                sortOrder: args.sortOrder === "desc" ? "desc" : args.sortOrder === "asc" ? "asc" : undefined,
+                limit: typeof args.limit === "number" ? args.limit : undefined,
+                offset: typeof args.offset === "number" ? args.offset : undefined,
+              }),
+            };
+          }
+          case "summarize":
+            return {
+              content: summarizeDocument(sessionId, docAlias, args.sheet ? String(args.sheet) : undefined),
+            };
+          case "search":
+            return {
+              content: searchText(sessionId, docAlias, String(args.searchText ?? "")),
+            };
+          case "remove":
+            return { content: removeDocument(sessionId, docAlias) };
+          default:
+            return { content: `Error: Unknown action '${action}'. Valid: list, preview, query, stats, cross_reference, summarize, search, remove.`, isError: true };
+        }
+      } catch (err) {
+        return { content: `Error: ${(err as Error).message}`, isError: true };
+      }
     }
     case "execute_code": {
       const fsSync = await import("node:fs");

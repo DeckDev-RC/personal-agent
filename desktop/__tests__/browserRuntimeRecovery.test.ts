@@ -37,9 +37,20 @@ describe("browserRuntimeRecovery", () => {
       }),
     ).toBe(true);
 
+    // browser_click is now in STALE_TARGET_SAFE_TOOLS (expanded for resilient navigation)
     expect(
       shouldRetryBrowserToolWithoutTarget({
         toolName: "browser_click",
+        args: { targetId: "tab-1" },
+        error: new Error('Browser target "tab-1" is not available.'),
+        attachedPageCount: 1,
+      }),
+    ).toBe(true);
+
+    // browser_drag is NOT in safe tools - still requires explicit target
+    expect(
+      shouldRetryBrowserToolWithoutTarget({
+        toolName: "browser_drag",
         args: { targetId: "tab-1" },
         error: new Error('Browser target "tab-1" is not available.'),
         attachedPageCount: 1,

@@ -32,6 +32,7 @@ const LogsView = lazy(() => import("../analytics/LogsView"));
 const DraftsList = lazy(() => import("../communication/DraftsList"));
 const AutomationView = lazy(() => import("../automation/AutomationView"));
 const PluginManager = lazy(() => import("../plugins/PluginManager"));
+const CoworkView = lazy(() => import("../cowork/CoworkView"));
 
 function ViewFallback() {
   return (
@@ -150,6 +151,8 @@ export default function Shell() {
         return <AutomationView />;
       case "plugins":
         return <PluginManager />;
+      case "cowork":
+        return <CoworkView />;
     }
   }
 

@@ -230,6 +230,24 @@ contextBridge.exposeInMainWorld("codexAgent", {
   cowork: {
     workspace: () => ipcRenderer.invoke("cowork:workspace"),
     file: (relativePath: string) => ipcRenderer.invoke("cowork:file", relativePath),
+    snapshot: () => ipcRenderer.invoke("cowork:snapshot"),
+    briefing: () => ipcRenderer.invoke("cowork:briefing"),
+    projects: {
+      list: () => ipcRenderer.invoke("cowork:projects:list"),
+      get: (id: string) => ipcRenderer.invoke("cowork:projects:get", id),
+      create: (data: Record<string, unknown>) => ipcRenderer.invoke("cowork:projects:create", data),
+      update: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke("cowork:projects:update", id, data),
+      delete: (id: string) => ipcRenderer.invoke("cowork:projects:delete", id),
+    },
+    meetings: {
+      list: () => ipcRenderer.invoke("cowork:meetings:list"),
+      get: (id: string) => ipcRenderer.invoke("cowork:meetings:get", id),
+      create: (data: Record<string, unknown>) => ipcRenderer.invoke("cowork:meetings:create", data),
+      update: (id: string, data: Record<string, unknown>) => ipcRenderer.invoke("cowork:meetings:update", id, data),
+      complete: (id: string) => ipcRenderer.invoke("cowork:meetings:complete", id),
+      delete: (id: string) => ipcRenderer.invoke("cowork:meetings:delete", id),
+      extractActions: (id: string, text: string) => ipcRenderer.invoke("cowork:meetings:extract-actions", id, text),
+    },
   },
 
   documents: {

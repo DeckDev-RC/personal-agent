@@ -17,7 +17,110 @@
     "mcp": "MCPs",
     "analytics": "Analytics",
     "logs": "Logs",
-    "settings": "Settings"
+    "settings": "Settings",
+    "cowork": "Cowork",
+    "inbox": "Inbox",
+    "communication": "Communication",
+    "automation": "Automation",
+    "plugins": "Plugins"
+  },
+  "cowork": {
+    "tab": {
+      "dashboard": "Dashboard",
+      "meetings": "Meetings",
+      "projects": "Projects",
+      "communications": "Communication",
+      "focus": "Focus"
+    },
+    "briefing": {
+      "overdue": "Overdue",
+      "dueToday": "Due today",
+      "inProgress": "In progress",
+      "drafts": "Drafts",
+      "todayMeetings": "Today's meetings"
+    },
+    "quickActions": "Quick Actions",
+    "quick": {
+      "email": "Compose Email",
+      "meeting": "Schedule Meeting",
+      "report": "Create Report",
+      "task": "New Task",
+      "chat": "Chat with AI",
+      "search": "Search"
+    },
+    "dashboard": {
+      "recentFiles": "Recent Files",
+      "meetings": "Upcoming Meetings",
+      "projects": "Active Projects",
+      "viewAll": "View all"
+    },
+    "meetings": {
+      "title": "Meetings",
+      "new": "New Meeting",
+      "empty": "No meetings scheduled",
+      "upcoming": "Upcoming",
+      "completed": "Completed",
+      "newTitle": "New Meeting",
+      "titlePlaceholder": "Meeting title",
+      "durationPlaceholder": "Duration (minutes)",
+      "participantsPlaceholder": "Participants (comma separated)",
+      "extractTitle": "Extract Action Items",
+      "extractHint": "Paste meeting notes. Items with - or * will be extracted as tasks.",
+      "extractBtn": "Extract Tasks"
+    },
+    "meeting": {
+      "upcoming": "Upcoming",
+      "inProgress": "In progress",
+      "completed": "Completed",
+      "participants": "participants",
+      "actionItems": "action items",
+      "complete": "Complete",
+      "extract": "Extract Actions"
+    },
+    "projects": {
+      "title": "Projects",
+      "new": "New Project",
+      "empty": "No projects created",
+      "active": "Active",
+      "paused": "Paused",
+      "completed": "Completed",
+      "newTitle": "New Project",
+      "namePlaceholder": "Project name",
+      "selectContext": "Select a context"
+    },
+    "project": {
+      "active": "Active",
+      "paused": "Paused",
+      "completed": "Completed",
+      "openTasks": "open",
+      "overdue": "overdue",
+      "milestones": "milestones",
+      "nextDeadline": "Next deadline"
+    },
+    "comms": {
+      "title": "Communication",
+      "compose": "Compose",
+      "drafts": "Pending Drafts",
+      "noDrafts": "No pending drafts",
+      "sent": "Recently Sent"
+    },
+    "focus": {
+      "title": "Focus Mode",
+      "selectTask": "Select a task to focus on or start without one.",
+      "startFree": "Start without task",
+      "pickTask": "Or select a task",
+      "exit": "Exit focus",
+      "currentTask": "Current Task",
+      "complete": "Complete",
+      "defer": "Defer",
+      "freeMode": "Free mode - focus on what you need to do"
+    },
+    "empty": {
+      "title": "Welcome to Cowork",
+      "description": "Your intelligent office assistant. Connect your services and start working more productively.",
+      "connectMcp": "Connect services (Gmail, Calendar, Slack)",
+      "createTasks": "Create your first tasks"
+    }
   },
   "chat": {
     "placeholder": "Type a message...",

@@ -177,6 +177,32 @@ function daemonClient() {
   return daemon.client;
 }
 
+/** Error codes that indicate the daemon backend is not reachable. */
+const DAEMON_CONN_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "EPIPE", "ETIMEDOUT"]);
+
+function isDaemonConnectionError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as any)?.code ?? (error as any)?.cause?.code;
+  if (code && DAEMON_CONN_CODES.has(code)) return true;
+  const cause = (error as any)?.cause;
+  if (cause instanceof Error) {
+    const causeCode = (cause as any)?.code;
+    if (causeCode && DAEMON_CONN_CODES.has(causeCode)) return true;
+  }
+  return false;
+}
+
+class DaemonUnavailableError extends Error {
+  constructor(channel: string, cause?: Error) {
+    super(
+      `[${channel}] O serviço de backend (daemon) está temporariamente indisponível. ` +
+      `Ele será reiniciado automaticamente. Tente novamente em alguns segundos.`,
+    );
+    this.name = "DaemonUnavailableError";
+    if (cause) this.cause = cause;
+  }
+}
+
 function safeHandle(
   channel: string,
   handler: (event: Electron.IpcMainInvokeEvent, ...args: any[]) => unknown | Promise<unknown>,
@@ -186,6 +212,16 @@ function safeHandle(
       return await handler(event, ...args);
     } catch (error) {
       const normalized = error instanceof Error ? error : new Error(String(error));
+
+      if (isDaemonConnectionError(error)) {
+        // Log a single concise warning instead of the full stack trace flood.
+        console.warn(
+          `[ipc] ${channel}: daemon unreachable (${(normalized as any)?.cause?.code ?? "connection error"}). ` +
+          `Auto-restart should recover the daemon shortly.`,
+        );
+        throw new DaemonUnavailableError(channel, normalized);
+      }
+
       console.error(`[ipc] ${channel} failed`, normalized);
       throw normalized;
     }
@@ -779,6 +815,20 @@ function registerIpcHandlers() {
   safeHandle("cowork:file", (_e, relativePath: string) =>
     daemonClient().get(`/cowork/file?path=${encodeURIComponent(relativePath)}`),
   );
+  safeHandle("cowork:snapshot", () => daemonClient().get("/cowork/snapshot"));
+  safeHandle("cowork:briefing", () => daemonClient().get("/cowork/briefing"));
+  safeHandle("cowork:projects:list", () => daemonClient().get("/cowork/projects"));
+  safeHandle("cowork:projects:get", (_e, id: string) => daemonClient().get(`/cowork/projects/${id}`));
+  safeHandle("cowork:projects:create", (_e, data: Record<string, unknown>) => daemonClient().post("/cowork/projects", data));
+  safeHandle("cowork:projects:update", (_e, id: string, data: Record<string, unknown>) => daemonClient().patch(`/cowork/projects/${id}`, data));
+  safeHandle("cowork:projects:delete", (_e, id: string) => daemonClient().delete(`/cowork/projects/${id}`));
+  safeHandle("cowork:meetings:list", () => daemonClient().get("/cowork/meetings"));
+  safeHandle("cowork:meetings:get", (_e, id: string) => daemonClient().get(`/cowork/meetings/${id}`));
+  safeHandle("cowork:meetings:create", (_e, data: Record<string, unknown>) => daemonClient().post("/cowork/meetings", data));
+  safeHandle("cowork:meetings:update", (_e, id: string, data: Record<string, unknown>) => daemonClient().patch(`/cowork/meetings/${id}`, data));
+  safeHandle("cowork:meetings:complete", (_e, id: string) => daemonClient().post(`/cowork/meetings/${id}/complete`, {}));
+  safeHandle("cowork:meetings:delete", (_e, id: string) => daemonClient().delete(`/cowork/meetings/${id}`));
+  safeHandle("cowork:meetings:extract-actions", (_e, id: string, text: string) => daemonClient().post(`/cowork/meetings/${id}/extract-actions`, { text }));
   safeHandle("documents:listTemplates", () => listDocumentTemplates());
   safeHandle("documents:render", (_e, args: { templateId: string; values?: Record<string, string> }) =>
     renderDocumentTemplate(args),

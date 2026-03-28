@@ -29,7 +29,9 @@ export type BrowserSessionState = {
   activityByTarget: Map<BrowserTargetId, BrowserTargetActivity>;
 };
 
-const DEFAULT_BROWSER_ACTIVITY_LIMIT = 100;
+const BROWSER_CONSOLE_LIMIT = 500;
+const BROWSER_ERROR_LIMIT = 200;
+const BROWSER_REQUEST_LIMIT = 500;
 
 function normalizeTargetId(value: unknown): BrowserTargetId | null {
   if (typeof value !== "string") {
@@ -101,7 +103,7 @@ export function clearBrowserRoleRefs(
 function appendCappedEntry<T>(
   entries: T[],
   entry: T,
-  maxEntries = DEFAULT_BROWSER_ACTIVITY_LIMIT,
+  maxEntries = BROWSER_CONSOLE_LIMIT,
 ): void {
   entries.push(entry);
   if (entries.length > maxEntries) {
@@ -259,7 +261,7 @@ export function appendBrowserConsoleEntry(params: {
   appendCappedEntry(
     getOrCreateBrowserTargetActivity(params.state, params.targetId).console,
     params.entry,
-    params.maxEntries,
+    params.maxEntries ?? BROWSER_CONSOLE_LIMIT,
   );
 }
 
@@ -272,7 +274,7 @@ export function appendBrowserPageErrorEntry(params: {
   appendCappedEntry(
     getOrCreateBrowserTargetActivity(params.state, params.targetId).errors,
     params.entry,
-    params.maxEntries,
+    params.maxEntries ?? BROWSER_ERROR_LIMIT,
   );
 }
 
@@ -285,7 +287,7 @@ export function appendBrowserRequestEntry(params: {
   appendCappedEntry(
     getOrCreateBrowserTargetActivity(params.state, params.targetId).requests,
     params.entry,
-    params.maxEntries,
+    params.maxEntries ?? BROWSER_REQUEST_LIMIT,
   );
 }
 
@@ -302,7 +304,7 @@ export function upsertBrowserRequestEntry(params: {
     appendCappedEntry(
       activity.requests,
       params.entry,
-      params.maxEntries,
+      params.maxEntries ?? BROWSER_REQUEST_LIMIT,
     );
     return;
   }
@@ -326,6 +328,14 @@ export function upsertBrowserRequestEntry(params: {
   appendCappedEntry(
     activity.requests,
     nextEntry,
-    params.maxEntries,
+    params.maxEntries ?? BROWSER_REQUEST_LIMIT,
   );
+}
+
+export function cleanupBrowserTarget(
+  state: BrowserSessionState,
+  targetId: BrowserTargetId,
+): void {
+  state.roleRefsByTarget.delete(targetId);
+  state.activityByTarget.delete(targetId);
 }

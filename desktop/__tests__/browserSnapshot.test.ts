@@ -35,7 +35,7 @@ describe("browserSnapshot", () => {
     const nodes = flattenAccessibilitySnapshot(tree);
     expect(nodes).toEqual([
       {
-        ref: "a1",
+        ref: "e1",
         role: "main",
         name: "",
         value: undefined,
@@ -43,7 +43,7 @@ describe("browserSnapshot", () => {
         depth: 0,
       },
       {
-        ref: "a2",
+        ref: "e2",
         role: "heading",
         name: "Orders",
         value: undefined,
@@ -51,7 +51,7 @@ describe("browserSnapshot", () => {
         depth: 1,
       },
       {
-        ref: "a3",
+        ref: "e3",
         role: "button",
         name: "New order",
         value: undefined,

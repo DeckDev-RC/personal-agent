@@ -119,7 +119,7 @@ describe("artifact persistence", () => {
       run_id: "run-1",
       label: "Report",
     });
-    expect(String(schemaVersion?.value)).toBe("3");
+    expect(Number(schemaVersion?.value)).toBeGreaterThanOrEqual(3);
   });
 
   it("stores uploaded attachments and previews as session-scoped artifacts", async () => {

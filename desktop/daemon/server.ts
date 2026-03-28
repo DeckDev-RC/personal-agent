@@ -42,6 +42,22 @@ import { getEffectiveToolRiskDecision, startDirectToolInvocation } from "../serv
 import { reindexWorkspace, setWorkspaceRootForSession } from "../services/workspaceIndex.js";
 import { listCoworkWorkspaceFiles, readCoworkWorkspaceFile } from "../services/coworkWorkspace.js";
 import {
+  getCoworkSnapshot,
+  getDailyBriefing,
+  listProjects,
+  getProject,
+  createProject,
+  updateProject,
+  deleteProject,
+  listMeetings,
+  getMeeting,
+  createMeeting,
+  updateMeeting,
+  completeMeeting,
+  deleteMeeting,
+  extractActionItems,
+} from "../services/coworkOrchestrator.js";
+import {
   acknowledgeReminder,
   cancelReminder,
   createReminder,
@@ -1030,6 +1046,103 @@ export class CodexAgentDaemon {
         return;
       }
       sendJson(res, 200, await readCoworkWorkspaceFile(relativePath));
+      return;
+    }
+
+    if (url.pathname === "/cowork/snapshot" && method === "GET") {
+      sendJson(res, 200, await getCoworkSnapshot());
+      return;
+    }
+
+    if (url.pathname === "/cowork/briefing" && method === "GET") {
+      sendJson(res, 200, await getDailyBriefing());
+      return;
+    }
+
+    if (url.pathname === "/cowork/projects" && method === "GET") {
+      sendJson(res, 200, await listProjects());
+      return;
+    }
+
+    if (url.pathname === "/cowork/projects" && method === "POST") {
+      const body = await readJson<any>(req);
+      sendJson(res, 200, await createProject(body));
+      return;
+    }
+
+    if (url.pathname.match(/^\/cowork\/projects\/[^/]+$/) && method === "GET") {
+      const id = url.pathname.split("/").pop()!;
+      const project = await getProject(id);
+      if (!project) { sendJson(res, 404, { ok: false, error: "Project not found." }); return; }
+      sendJson(res, 200, project);
+      return;
+    }
+
+    if (url.pathname.match(/^\/cowork\/projects\/[^/]+$/) && method === "PATCH") {
+      const id = url.pathname.split("/").pop()!;
+      const body = await readJson<any>(req);
+      const project = await updateProject(id, body);
+      if (!project) { sendJson(res, 404, { ok: false, error: "Project not found." }); return; }
+      sendJson(res, 200, project);
+      return;
+    }
+
+    if (url.pathname.match(/^\/cowork\/projects\/[^/]+$/) && method === "DELETE") {
+      const id = url.pathname.split("/").pop()!;
+      const ok = await deleteProject(id);
+      sendJson(res, ok ? 200 : 404, { ok });
+      return;
+    }
+
+    if (url.pathname === "/cowork/meetings" && method === "GET") {
+      sendJson(res, 200, await listMeetings());
+      return;
+    }
+
+    if (url.pathname === "/cowork/meetings" && method === "POST") {
+      const body = await readJson<any>(req);
+      sendJson(res, 200, await createMeeting(body));
+      return;
+    }
+
+    if (url.pathname.match(/^\/cowork\/meetings\/[^/]+\/complete$/) && method === "POST") {
+      const id = url.pathname.split("/")[3];
+      const meeting = await completeMeeting(id);
+      if (!meeting) { sendJson(res, 404, { ok: false, error: "Meeting not found." }); return; }
+      sendJson(res, 200, meeting);
+      return;
+    }
+
+    if (url.pathname.match(/^\/cowork\/meetings\/[^/]+\/extract-actions$/) && method === "POST") {
+      const id = url.pathname.split("/")[3];
+      const body = await readJson<{ text?: string }>(req);
+      const text = body?.text ?? "";
+      const taskIds = await extractActionItems(id, text);
+      sendJson(res, 200, { taskIds });
+      return;
+    }
+
+    if (url.pathname.match(/^\/cowork\/meetings\/[^/]+$/) && method === "GET") {
+      const id = url.pathname.split("/").pop()!;
+      const meeting = await getMeeting(id);
+      if (!meeting) { sendJson(res, 404, { ok: false, error: "Meeting not found." }); return; }
+      sendJson(res, 200, meeting);
+      return;
+    }
+
+    if (url.pathname.match(/^\/cowork\/meetings\/[^/]+$/) && method === "PATCH") {
+      const id = url.pathname.split("/").pop()!;
+      const body = await readJson<any>(req);
+      const meeting = await updateMeeting(id, body);
+      if (!meeting) { sendJson(res, 404, { ok: false, error: "Meeting not found." }); return; }
+      sendJson(res, 200, meeting);
+      return;
+    }
+
+    if (url.pathname.match(/^\/cowork\/meetings\/[^/]+$/) && method === "DELETE") {
+      const id = url.pathname.split("/").pop()!;
+      const ok = await deleteMeeting(id);
+      sendJson(res, ok ? 200 : 404, { ok });
       return;
     }
 

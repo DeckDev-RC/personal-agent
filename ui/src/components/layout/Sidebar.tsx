@@ -24,6 +24,7 @@ import {
   Mail,
   Timer,
   Package,
+  Building2,
 } from "lucide-react";
 import QuickActions from "../skills/QuickActions";
 
@@ -47,7 +48,8 @@ export type NavView =
   | "settings"
   | "communication"
   | "automation"
-  | "plugins";
+  | "plugins"
+  | "cowork";
 
 type SidebarProps = {
   open: boolean;
@@ -60,6 +62,7 @@ type NavItem = { view: NavView; icon: React.ElementType; labelKey: string; fallb
 
 const chatItems: NavItem[] = [
   { view: "today", icon: LayoutDashboard, labelKey: "nav.today", fallbackLabel: "Hoje" },
+  { view: "cowork", icon: Building2, labelKey: "nav.cowork", fallbackLabel: "Cowork" },
   { view: "chat", icon: MessageSquare, labelKey: "nav.chat", fallbackLabel: "Chat" },
   { view: "notifications", icon: BellRing, labelKey: "nav.notifications", fallbackLabel: "Notificacoes" },
   { view: "inbox", icon: Inbox, labelKey: "nav.inbox", fallbackLabel: "Inbox" },
